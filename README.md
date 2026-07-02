@@ -75,17 +75,17 @@ cp .env.example .env
 
 Supported variables:
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `IMAGE` | `linux-desktop:latest` | Local OCI image name |
-| `NAME` | `linux-desktop` | Container name |
-| `HOST_IP` | `127.0.0.1` | Host bind address |
-| `PORT` | `6080` | noVNC host port |
-| `CPUS` | `4` | Container CPU allocation |
-| `MEMORY` | `4G` | Container memory allocation |
-| `VNC_GEOMETRY` | `1440x900` | Desktop resolution |
-| `VNC_DEPTH` | `24` | VNC color depth |
-| `VNC_PASSWORD` | `apple` | VNC password |
+| Variable       | Default                | Description                 |
+| -------------- | ---------------------- | --------------------------- |
+| `IMAGE`        | `linux-desktop:latest` | Local OCI image name        |
+| `NAME`         | `linux-desktop`        | Container name              |
+| `HOST_IP`      | `127.0.0.1`            | Host bind address           |
+| `PORT`         | `6080`                 | noVNC host port             |
+| `CPUS`         | `4`                    | Container CPU allocation    |
+| `MEMORY`       | `4G`                   | Container memory allocation |
+| `VNC_GEOMETRY` | `1440x900`             | Desktop resolution          |
+| `VNC_DEPTH`    | `24`                   | VNC color depth             |
+| `VNC_PASSWORD` | `apple`                | VNC password                |
 
 ## Shell access
 
