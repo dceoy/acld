@@ -1,0 +1,509 @@
+#!/usr/bin/env sh
+# Unified operator CLI for the Apple Container Linux desktop.
+set -eu
+
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+cd "${SCRIPT_DIR}"
+
+ENV_FILE=".env"
+MIN_MACOS_MAJOR=26
+
+log_info() { printf '%s\n' "$*"; }
+log_warn() { printf 'WARNING: %s\n' "$*" >&2; }
+log_error() { printf 'ERROR: %s\n' "$*" >&2; }
+
+usage() {
+  cat <<EOF
+Usage: linux-desktop <command> [options]
+
+Commands:
+  up          Start the desktop (idempotent, detached by default)
+                --build, --rebuild   Force a rebuild of the image first
+  down        Stop the running desktop container
+  restart     Stop and start the desktop (accepts 'up' options)
+  status      Show whether the desktop is running and how to reach it
+  shell       Open a shell in the running container, or a temporary one
+  build       Build the container image
+  clean       Stop and remove the container
+                --image, --all       Also remove the built image
+  reset       Clean up, then start again (accepts 'clean'/'up' options)
+  doctor      Run diagnostics and print remediation guidance
+  help        Show this help message
+
+Configuration is read from .env when present, falling back to the
+defaults documented in .env.example. See README.md for details.
+EOF
+}
+
+# --- configuration -----------------------------------------------------
+
+load_env() {
+  if [ -f "${ENV_FILE}" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    . "./${ENV_FILE}"
+    set +a
+  fi
+
+  IMAGE="${IMAGE:-linux-desktop:latest}"
+  NAME="${NAME:-linux-desktop}"
+  HOST_IP="${HOST_IP:-127.0.0.1}"
+  PORT="${PORT:-6080}"
+  CPUS="${CPUS:-4}"
+  MEMORY="${MEMORY:-4G}"
+  VNC_GEOMETRY="${VNC_GEOMETRY:-1440x900}"
+  VNC_DEPTH="${VNC_DEPTH:-24}"
+  VNC_PASSWORD="${VNC_PASSWORD:-apple}"
+}
+
+display_host() {
+  if [ "${HOST_IP}" = "0.0.0.0" ]; then
+    printf '%s' "localhost"
+  else
+    printf '%s' "${HOST_IP}"
+  fi
+}
+
+print_access_info() {
+  log_info ""
+  log_info "noVNC:  http://$(display_host):${PORT}/vnc.html"
+  log_info ""
+  log_info "Next steps:"
+  log_info "  ./linux-desktop status   Check status"
+  log_info "  ./linux-desktop shell    Open a shell in the container"
+  log_info "  ./linux-desktop down     Stop the desktop"
+}
+
+# --- platform checks -----------------------------------------------------
+
+detect_arch_status() {
+  ARCH=$(uname -m 2>/dev/null || printf 'unknown')
+  case "${ARCH}" in
+    arm64 | aarch64) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+detect_os_status() {
+  OS_NAME=$(uname -s 2>/dev/null || printf 'unknown')
+  [ "${OS_NAME}" = "Darwin" ]
+}
+
+# Returns 0 (>= MIN_MACOS_MAJOR), 1 (too old), or 2 (undetermined).
+detect_macos_version_status() {
+  if ! command -v sw_vers >/dev/null 2>&1; then
+    MACOS_VERSION="unknown"
+    return 2
+  fi
+  MACOS_VERSION=$(sw_vers -productVersion 2>/dev/null || printf '')
+  MACOS_MAJOR=${MACOS_VERSION%%.*}
+  case "${MACOS_MAJOR}" in
+    '' | *[!0-9]*) return 2 ;;
+  esac
+  if [ "${MACOS_MAJOR}" -ge "${MIN_MACOS_MAJOR}" ]; then
+    return 0
+  fi
+  return 1
+}
+
+detect_container_cli_status() {
+  command -v container >/dev/null 2>&1
+}
+
+# Returns 0 (in use), 1 (free), or 2 (undetermined: no lsof/nc available).
+port_in_use_status() {
+  check_host_ip="$1"
+  check_port="$2"
+  if command -v lsof >/dev/null 2>&1; then
+    if lsof -nP -iTCP:"${check_port}" -sTCP:LISTEN >/dev/null 2>&1; then
+      return 0
+    fi
+    return 1
+  fi
+  if command -v nc >/dev/null 2>&1; then
+    if nc -z -w 1 "${check_host_ip}" "${check_port}" >/dev/null 2>&1; then
+      return 0
+    fi
+    return 1
+  fi
+  return 2
+}
+
+verify_platform() {
+  platform_ok=1
+
+  if detect_arch_status; then
+    :
+  else
+    log_error "Unsupported architecture: ${ARCH:-unknown}. Apple Silicon (arm64) is required."
+    platform_ok=0
+  fi
+
+  if detect_os_status; then
+    if detect_macos_version_status; then
+      macos_status=0
+    else
+      macos_status=$?
+    fi
+    if [ "${macos_status}" -eq 1 ]; then
+      log_error "macOS ${MACOS_VERSION} detected; macOS ${MIN_MACOS_MAJOR} or later is required."
+      platform_ok=0
+    elif [ "${macos_status}" -eq 2 ]; then
+      log_warn "Could not determine the macOS version; continuing anyway."
+    fi
+  else
+    log_error "Unsupported operating system: ${OS_NAME:-unknown}. macOS is required."
+    platform_ok=0
+  fi
+
+  if detect_container_cli_status; then
+    :
+  else
+    log_error "The 'container' CLI was not found in PATH. Install it from https://github.com/apple/container (or 'brew install --cask container')."
+    platform_ok=0
+  fi
+
+  if [ "${platform_ok}" -eq 0 ]; then
+    log_error "Run './linux-desktop doctor' for a full diagnostic report."
+    exit 1
+  fi
+}
+
+# --- container helpers -----------------------------------------------------
+
+container_system_running() {
+  container system status >/dev/null 2>&1
+}
+
+ensure_container_system() {
+  if container_system_running; then
+    return 0
+  fi
+  log_info "Starting the Apple container system..."
+  if ! container system start; then
+    log_error "Failed to start the Apple container system. Run 'container system start' manually to see details."
+    exit 1
+  fi
+}
+
+container_running() {
+  container list --quiet 2>/dev/null | grep -Fxq "$1"
+}
+
+container_exists() {
+  container list --all --quiet 2>/dev/null | grep -Fxq "$1"
+}
+
+image_exists() {
+  container image list --quiet 2>/dev/null | grep -Fxq "$1"
+}
+
+# --- commands -----------------------------------------------------
+
+build_cmd() {
+  load_env
+  log_info "Building image '${IMAGE}'..."
+  container build --platform linux/arm64 --tag "${IMAGE}" .
+}
+
+up_cmd() {
+  force_build=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --build | --rebuild) force_build=1 ;;
+      -h | --help)
+        usage
+        return 0
+        ;;
+      *)
+        log_error "up: unknown option '$1'"
+        exit 2
+        ;;
+    esac
+    shift
+  done
+
+  load_env
+  verify_platform
+
+  if container_running "${NAME}"; then
+    log_info "Container '${NAME}' is already running."
+    print_access_info
+    return 0
+  fi
+
+  ensure_container_system
+
+  if [ "${force_build}" -eq 1 ]; then
+    build_cmd
+  elif ! image_exists "${IMAGE}"; then
+    build_cmd
+  fi
+
+  if container_exists "${NAME}"; then
+    log_info "Removing stale container '${NAME}'..."
+    container delete "${NAME}" >/dev/null 2>&1 || true
+  fi
+
+  log_info "Starting container '${NAME}'..."
+  container run \
+    --detach \
+    --rm \
+    --name "${NAME}" \
+    --cpus "${CPUS}" \
+    --memory "${MEMORY}" \
+    --publish "${HOST_IP}:${PORT}:6080" \
+    --env "VNC_GEOMETRY=${VNC_GEOMETRY}" \
+    --env "VNC_DEPTH=${VNC_DEPTH}" \
+    --env "VNC_PASSWORD=${VNC_PASSWORD}" \
+    "${IMAGE}" >/dev/null
+
+  log_info "Container '${NAME}' started."
+  print_access_info
+}
+
+down_cmd() {
+  load_env
+  if container_running "${NAME}"; then
+    log_info "Stopping container '${NAME}'..."
+    container stop "${NAME}"
+  else
+    log_info "Container '${NAME}' is not running."
+  fi
+}
+
+restart_cmd() {
+  down_cmd
+  up_cmd "$@"
+}
+
+status_cmd() {
+  load_env
+  log_info "Container: ${NAME}"
+  if container_running "${NAME}"; then
+    log_info "Status:    running"
+    print_access_info
+    return 0
+  fi
+  if container_exists "${NAME}"; then
+    log_info "Status:    stopped (stale container present; run './linux-desktop up' or './linux-desktop clean')"
+  else
+    log_info "Status:    not running"
+  fi
+  return 1
+}
+
+shell_cmd() {
+  load_env
+  if container_running "${NAME}"; then
+    log_info "Opening a shell in the running container '${NAME}'..."
+    exec container exec --interactive --tty "${NAME}" /bin/bash
+  fi
+
+  if ! image_exists "${IMAGE}"; then
+    log_error "Image '${IMAGE}' not found. Run './linux-desktop build' first."
+    exit 1
+  fi
+
+  log_info "Container '${NAME}' is not running; starting a temporary shell from '${IMAGE}'..."
+  exec container run \
+    --rm \
+    --interactive \
+    --tty \
+    --entrypoint /bin/bash \
+    "${IMAGE}"
+}
+
+clean_cmd() {
+  remove_image=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --image | --all) remove_image=1 ;;
+      -h | --help)
+        usage
+        return 0
+        ;;
+      *)
+        log_error "clean: unknown option '$1'"
+        exit 2
+        ;;
+    esac
+    shift
+  done
+
+  load_env
+
+  if container_running "${NAME}"; then
+    log_info "Stopping container '${NAME}'..."
+    container stop "${NAME}" >/dev/null 2>&1 || true
+  fi
+  if container_exists "${NAME}"; then
+    log_info "Removing container '${NAME}'..."
+    container delete "${NAME}" >/dev/null 2>&1 || true
+  fi
+
+  if [ "${remove_image}" -eq 1 ] && image_exists "${IMAGE}"; then
+    log_info "Removing image '${IMAGE}'..."
+    container image delete "${IMAGE}" >/dev/null 2>&1 || true
+  fi
+
+  log_info "Clean complete."
+}
+
+reset_cmd() {
+  clean_flag=""
+  build_flag=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --image | --all) clean_flag="$1" ;;
+      --build | --rebuild) build_flag="$1" ;;
+      -h | --help)
+        usage
+        return 0
+        ;;
+      *)
+        log_error "reset: unknown option '$1'"
+        exit 2
+        ;;
+    esac
+    shift
+  done
+
+  if [ -n "${clean_flag}" ]; then
+    clean_cmd "${clean_flag}"
+  else
+    clean_cmd
+  fi
+
+  if [ -n "${build_flag}" ]; then
+    up_cmd "${build_flag}"
+  else
+    up_cmd
+  fi
+}
+
+doctor_cmd() {
+  load_env
+  fail_count=0
+  warn_count=0
+
+  log_info "== linux-desktop doctor =="
+
+  if detect_arch_status; then
+    log_info "[ OK ] Architecture: ${ARCH} (Apple Silicon)"
+  else
+    log_info "[FAIL] Architecture: ${ARCH:-unknown} -- Apple Silicon (arm64) is required."
+    fail_count=$((fail_count + 1))
+  fi
+
+  if detect_os_status; then
+    if detect_macos_version_status; then
+      macos_status=0
+    else
+      macos_status=$?
+    fi
+    case "${macos_status}" in
+      0) log_info "[ OK ] macOS version: ${MACOS_VERSION} (>= ${MIN_MACOS_MAJOR})" ;;
+      1)
+        log_info "[FAIL] macOS version: ${MACOS_VERSION} -- macOS ${MIN_MACOS_MAJOR} or later is required."
+        fail_count=$((fail_count + 1))
+        ;;
+      *)
+        log_info "[WARN] macOS version: could not be determined (sw_vers unavailable or unparsable)."
+        warn_count=$((warn_count + 1))
+        ;;
+    esac
+  else
+    log_info "[FAIL] Operating system: ${OS_NAME:-unknown} -- macOS is required."
+    fail_count=$((fail_count + 1))
+  fi
+
+  if detect_container_cli_status; then
+    log_info "[ OK ] Apple container CLI: found at $(command -v container)"
+  else
+    log_info "[FAIL] Apple container CLI: 'container' not found in PATH -- install it from https://github.com/apple/container (or 'brew install --cask container')."
+    fail_count=$((fail_count + 1))
+  fi
+
+  if detect_container_cli_status; then
+    if container_system_running; then
+      log_info "[ OK ] Apple container system: running"
+    else
+      log_info "[WARN] Apple container system: not running -- run './linux-desktop up' or 'container system start'."
+      warn_count=$((warn_count + 1))
+    fi
+  else
+    log_info "[WARN] Apple container system: skipped (CLI not available)."
+    warn_count=$((warn_count + 1))
+  fi
+
+  if detect_container_cli_status && container_system_running; then
+    if container_running "${NAME}"; then
+      log_info "[ OK ] Host port ${PORT} on ${HOST_IP}: bound by the running '${NAME}' container."
+    else
+      if port_in_use_status "${HOST_IP}" "${PORT}"; then
+        port_status=0
+      else
+        port_status=$?
+      fi
+      case "${port_status}" in
+        0)
+          log_info "[WARN] Host port ${PORT} on ${HOST_IP}: appears to be in use by another process -- set PORT in .env to a free port, or stop the conflicting process."
+          warn_count=$((warn_count + 1))
+          ;;
+        1) log_info "[ OK ] Host port ${PORT} on ${HOST_IP}: free" ;;
+        *)
+          log_info "[WARN] Host port check: skipped (no 'lsof' or 'nc' available to verify)."
+          warn_count=$((warn_count + 1))
+          ;;
+      esac
+    fi
+  else
+    log_info "[WARN] Host port check: skipped (container system unavailable)."
+    warn_count=$((warn_count + 1))
+  fi
+
+  if [ "${VNC_PASSWORD}" = "apple" ]; then
+    log_info "[WARN] VNC_PASSWORD: still set to the default value -- set a non-default VNC_PASSWORD in .env before exposing this beyond localhost."
+    warn_count=$((warn_count + 1))
+  else
+    log_info "[ OK ] VNC_PASSWORD: overridden from the default"
+  fi
+
+  log_info ""
+  log_info "Summary: ${fail_count} failing, ${warn_count} warning(s)."
+
+  if [ "${fail_count}" -gt 0 ]; then
+    return 1
+  fi
+  return 0
+}
+
+# --- dispatch -----------------------------------------------------
+
+main() {
+  cmd="${1:-help}"
+  if [ $# -gt 0 ]; then
+    shift
+  fi
+
+  case "${cmd}" in
+    up) up_cmd "$@" ;;
+    down) down_cmd "$@" ;;
+    restart) restart_cmd "$@" ;;
+    status) status_cmd "$@" ;;
+    shell) shell_cmd "$@" ;;
+    build) build_cmd "$@" ;;
+    clean) clean_cmd "$@" ;;
+    reset) reset_cmd "$@" ;;
+    doctor) doctor_cmd "$@" ;;
+    help | -h | --help) usage ;;
+    *)
+      log_error "Unknown command: ${cmd}"
+      usage >&2
+      exit 2
+      ;;
+  esac
+}
+
+main "$@"

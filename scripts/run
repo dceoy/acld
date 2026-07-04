@@ -1,30 +1,10 @@
 #!/usr/bin/env sh
+# NOTE: this now delegates to `linux-desktop up`, which starts the desktop
+# detached and returns immediately instead of blocking in the foreground.
+# Use `./linux-desktop shell`, `./linux-desktop status`, or `./scripts/stop`
+# to interact with it afterwards.
 set -eu
 
-if [ -f .env ]; then
-  set -a
-  # shellcheck source=/dev/null
-  . ./.env
-  set +a
-fi
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
-IMAGE="${IMAGE:-linux-desktop:latest}"
-NAME="${NAME:-linux-desktop}"
-HOST_IP="${HOST_IP:-127.0.0.1}"
-PORT="${PORT:-6080}"
-CPUS="${CPUS:-4}"
-MEMORY="${MEMORY:-4G}"
-VNC_GEOMETRY="${VNC_GEOMETRY:-1440x900}"
-VNC_DEPTH="${VNC_DEPTH:-24}"
-VNC_PASSWORD="${VNC_PASSWORD:-apple}"
-
-container run \
-  --rm \
-  --name "${NAME}" \
-  --cpus "${CPUS}" \
-  --memory "${MEMORY}" \
-  --publish "${HOST_IP}:${PORT}:6080" \
-  --env "VNC_GEOMETRY=${VNC_GEOMETRY}" \
-  --env "VNC_DEPTH=${VNC_DEPTH}" \
-  --env "VNC_PASSWORD=${VNC_PASSWORD}" \
-  "${IMAGE}"
+exec "${SCRIPT_DIR}/linux-desktop" up "$@"

@@ -1,16 +1,6 @@
 #!/usr/bin/env sh
 set -eu
 
-if [ -f .env ]; then
-  set -a
-  # shellcheck source=/dev/null
-  . ./.env
-  set +a
-fi
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
-IMAGE="${IMAGE:-linux-desktop:latest}"
-
-container build \
-  --platform linux/arm64 \
-  --tag "${IMAGE}" \
-  .
+exec "${SCRIPT_DIR}/linux-desktop" build "$@"
