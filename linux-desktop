@@ -7,6 +7,11 @@ cd "${SCRIPT_DIR}"
 
 ENV_FILE=".env"
 MIN_MACOS_MAJOR=26
+NL='
+'
+# Accumulates raw "--volume" specs seen across up/restart/reset option
+# parsing. Populated before up_cmd resolves the final mount list.
+CLI_VOLUMES=""
 
 log_info() { printf '%s\n' "$*"; }
 log_warn() { printf 'WARNING: %s\n' "$*" >&2; }
@@ -22,9 +27,12 @@ Commands:
                                      desktop is already running, only the
                                      image is rebuilt (use 'restart
                                      --build' to also recreate it).
+                --volume HOST:CONTAINER[:ro|rw]
+                                     Bind-mount a host path (repeatable).
   down        Stop the running desktop container
   restart     Stop and start the desktop (accepts 'up' options)
   status      Show whether the desktop is running and how to reach it
+                --json               Print machine-readable JSON
   shell       Open a shell in the running container, or a temporary one
   build       Build the container image
   clean       Stop and remove the container
@@ -35,6 +43,11 @@ Commands:
 
 Configuration is read from .env when present, falling back to the
 defaults documented in .env.example. See README.md for details.
+
+Host mounts are opt-in and off by default. Use --volume (repeatable) for
+one-off mounts, or set HOST_MOUNTS_FILE in .env (e.g. HOST_MOUNTS_FILE=.mounts)
+to a file with one "HOST:CONTAINER[:ro|rw]" spec per line for mounts you
+want every 'up' to apply.
 EOF
 }
 
@@ -57,6 +70,8 @@ load_env() {
   VNC_GEOMETRY="${VNC_GEOMETRY:-1440x900}"
   VNC_DEPTH="${VNC_DEPTH:-24}"
   VNC_PASSWORD="${VNC_PASSWORD:-apple}"
+  # Unset by default: host mounts are opt-in only.
+  HOST_MOUNTS_FILE="${HOST_MOUNTS_FILE:-}"
 }
 
 display_host() {
@@ -201,6 +216,69 @@ image_exists() {
   container image list --quiet 2>/dev/null | grep -Fxq "$1"
 }
 
+# --- host mounts -----------------------------------------------------
+
+json_escape() {
+  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+}
+
+# Parses "$1" as HOST:CONTAINER[:ro|rw] into MOUNT_HOST, MOUNT_CONTAINER,
+# and MOUNT_MODE (defaulting to rw). Returns 1 on a malformed spec.
+parse_mount_spec() {
+  mount_spec="$1"
+  mount_rest="${mount_spec#*:}"
+  if [ "${mount_rest}" = "${mount_spec}" ]; then
+    return 1
+  fi
+  MOUNT_HOST="${mount_spec%%:*}"
+  case "${mount_rest}" in
+    *:ro)
+      MOUNT_MODE="ro"
+      MOUNT_CONTAINER="${mount_rest%:ro}"
+      ;;
+    *:rw)
+      MOUNT_MODE="rw"
+      MOUNT_CONTAINER="${mount_rest%:rw}"
+      ;;
+    *)
+      MOUNT_MODE="rw"
+      MOUNT_CONTAINER="${mount_rest}"
+      ;;
+  esac
+  [ -n "${MOUNT_HOST}" ] && [ -n "${MOUNT_CONTAINER}" ]
+}
+
+# Reads HOST_MOUNTS_FILE (if configured) into newline-separated
+# FILE_MOUNT_SPECS, skipping blank lines and '#' comments. Fails loudly
+# if the configured file is missing so a typo doesn't silently mount
+# nothing.
+load_mounts_file_specs() {
+  FILE_MOUNT_SPECS=""
+  if [ -z "${HOST_MOUNTS_FILE}" ]; then
+    return 0
+  fi
+  if [ ! -f "${HOST_MOUNTS_FILE}" ]; then
+    log_error "HOST_MOUNTS_FILE is set to '${HOST_MOUNTS_FILE}' but that file does not exist."
+    exit 1
+  fi
+  while IFS= read -r mounts_file_line || [ -n "${mounts_file_line}" ]; do
+    case "${mounts_file_line}" in
+      '' | '#'*) continue ;;
+    esac
+    FILE_MOUNT_SPECS="${FILE_MOUNT_SPECS}${FILE_MOUNT_SPECS:+${NL}}${mounts_file_line}"
+  done < "${HOST_MOUNTS_FILE}"
+}
+
+# Combines CLI_VOLUMES (from --volume flags) and HOST_MOUNTS_FILE entries
+# into newline-separated ALL_MOUNT_SPECS.
+resolve_mount_specs() {
+  load_mounts_file_specs
+  ALL_MOUNT_SPECS="${CLI_VOLUMES}"
+  if [ -n "${FILE_MOUNT_SPECS}" ]; then
+    ALL_MOUNT_SPECS="${ALL_MOUNT_SPECS}${ALL_MOUNT_SPECS:+${NL}}${FILE_MOUNT_SPECS}"
+  fi
+}
+
 # --- commands -----------------------------------------------------
 
 build_cmd() {
@@ -214,6 +292,14 @@ up_cmd() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --build | --rebuild) force_build=1 ;;
+      --volume)
+        shift
+        if [ $# -eq 0 ]; then
+          log_error "up: --volume requires an argument"
+          exit 2
+        fi
+        CLI_VOLUMES="${CLI_VOLUMES}${CLI_VOLUMES:+${NL}}$1"
+        ;;
       -h | --help)
         usage
         return 0
@@ -228,6 +314,7 @@ up_cmd() {
 
   load_env
   verify_platform
+  resolve_mount_specs
 
   if container_running "${NAME}"; then
     if [ "${force_build}" -eq 1 ]; then
@@ -238,6 +325,40 @@ up_cmd() {
     fi
     print_access_info
     return 0
+  fi
+
+  # Validate all mounts and accumulate "--volume host:container:mode"
+  # arguments before touching the container system, image, or any
+  # existing container, so a bad spec fails without side effects. $@ is
+  # empty here (the option loop above consumed everything); reuse it as
+  # the accumulator since POSIX sh has no arrays.
+  mount_targets=""
+  if [ -n "${ALL_MOUNT_SPECS}" ]; then
+    while IFS= read -r mount_spec || [ -n "${mount_spec}" ]; do
+      [ -z "${mount_spec}" ] && continue
+      if ! parse_mount_spec "${mount_spec}"; then
+        log_error "Invalid --volume/HOST_MOUNTS_FILE entry: '${mount_spec}' (expected HOST_PATH:CONTAINER_PATH[:ro|rw])"
+        exit 2
+      fi
+      if [ ! -e "${MOUNT_HOST}" ]; then
+        log_error "Host mount path does not exist: '${MOUNT_HOST}' (from '${mount_spec}')"
+        exit 1
+      fi
+      case "${MOUNT_CONTAINER}" in
+        /*) : ;;
+        *)
+          log_error "Container mount path must be absolute: '${MOUNT_CONTAINER}' (from '${mount_spec}')"
+          exit 2
+          ;;
+      esac
+      if [ "${MOUNT_MODE}" = "rw" ]; then
+        log_warn "Mounting '${MOUNT_HOST}' as writable (rw) at '${MOUNT_CONTAINER}'. Use ':ro' if write access isn't required."
+      fi
+      set -- "$@" --volume "${MOUNT_HOST}:${MOUNT_CONTAINER}:${MOUNT_MODE}"
+      mount_targets="${mount_targets}${mount_targets:+:}${MOUNT_CONTAINER}"
+    done <<MOUNT_SPECS_EOF
+${ALL_MOUNT_SPECS}
+MOUNT_SPECS_EOF
   fi
 
   ensure_container_system
@@ -264,6 +385,8 @@ up_cmd() {
     --env "VNC_GEOMETRY=${VNC_GEOMETRY}" \
     --env "VNC_DEPTH=${VNC_DEPTH}" \
     --env "VNC_PASSWORD=${VNC_PASSWORD}" \
+    --env "MOUNT_TARGETS=${mount_targets}" \
+    "$@" \
     "${IMAGE}" >/dev/null
 
   log_info "Container '${NAME}' started."
@@ -285,6 +408,14 @@ restart_cmd() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --build | --rebuild) restart_build_flag="$1" ;;
+      --volume)
+        shift
+        if [ $# -eq 0 ]; then
+          log_error "restart: --volume requires an argument"
+          exit 2
+        fi
+        CLI_VOLUMES="${CLI_VOLUMES}${CLI_VOLUMES:+${NL}}$1"
+        ;;
       -h | --help)
         usage
         return 0
@@ -305,20 +436,96 @@ restart_cmd() {
   fi
 }
 
-status_cmd() {
-  load_env
-  log_info "Container: ${NAME}"
-  if container_running "${NAME}"; then
-    log_info "Status:    running"
-    print_access_info
+print_mounts_text() {
+  if [ -z "${ALL_MOUNT_SPECS}" ]; then
+    log_info "Mounts:    none configured"
     return 0
   fi
-  if container_exists "${NAME}"; then
-    log_info "Status:    stopped (stale container present; run './linux-desktop up' or './linux-desktop clean')"
+  log_info "Mounts:"
+  while IFS= read -r mount_spec || [ -n "${mount_spec}" ]; do
+    [ -z "${mount_spec}" ] && continue
+    if parse_mount_spec "${mount_spec}"; then
+      host_state="missing"
+      [ -e "${MOUNT_HOST}" ] && host_state="ok"
+      log_info "  ${MOUNT_HOST} -> ${MOUNT_CONTAINER} (${MOUNT_MODE}, host path: ${host_state})"
+    else
+      log_info "  (invalid entry: '${mount_spec}')"
+    fi
+  done <<MOUNT_SPECS_EOF
+${ALL_MOUNT_SPECS}
+MOUNT_SPECS_EOF
+}
+
+print_status_json() {
+  status_running="$1"
+  if [ "${status_running}" -eq 1 ]; then
+    running_json="true"
+    novnc_json="\"http://$(display_host):${PORT}/vnc.html\""
   else
-    log_info "Status:    not running"
+    running_json="false"
+    novnc_json="null"
   fi
-  return 1
+
+  mounts_json=""
+  if [ -n "${ALL_MOUNT_SPECS}" ]; then
+    while IFS= read -r mount_spec || [ -n "${mount_spec}" ]; do
+      [ -z "${mount_spec}" ] && continue
+      parse_mount_spec "${mount_spec}" || continue
+      host_exists_json="false"
+      [ -e "${MOUNT_HOST}" ] && host_exists_json="true"
+      mount_item=$(printf '{"host":"%s","container":"%s","mode":"%s","host_exists":%s}' \
+        "$(json_escape "${MOUNT_HOST}")" "$(json_escape "${MOUNT_CONTAINER}")" "${MOUNT_MODE}" "${host_exists_json}")
+      mounts_json="${mounts_json}${mounts_json:+,}${mount_item}"
+    done <<MOUNT_SPECS_EOF
+${ALL_MOUNT_SPECS}
+MOUNT_SPECS_EOF
+  fi
+
+  printf '{"name":"%s","running":%s,"image":"%s","novnc_url":%s,"mounts":[%s]}\n' \
+    "$(json_escape "${NAME}")" "${running_json}" "$(json_escape "${IMAGE}")" "${novnc_json}" "${mounts_json}"
+}
+
+status_cmd() {
+  json_output=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --json) json_output=1 ;;
+      -h | --help)
+        usage
+        return 0
+        ;;
+      *)
+        log_error "status: unknown option '$1'"
+        exit 2
+        ;;
+    esac
+    shift
+  done
+
+  load_env
+  resolve_mount_specs
+
+  is_running=0
+  if container_running "${NAME}"; then
+    is_running=1
+  fi
+
+  if [ "${json_output}" -eq 1 ]; then
+    print_status_json "${is_running}"
+  else
+    log_info "Container: ${NAME}"
+    if [ "${is_running}" -eq 1 ]; then
+      log_info "Status:    running"
+      print_access_info
+    elif container_exists "${NAME}"; then
+      log_info "Status:    stopped (stale container present; run './linux-desktop up' or './linux-desktop clean')"
+    else
+      log_info "Status:    not running"
+    fi
+    print_mounts_text
+  fi
+
+  [ "${is_running}" -eq 1 ]
 }
 
 shell_cmd() {
@@ -385,6 +592,14 @@ reset_cmd() {
     case "$1" in
       --image | --all) clean_flag="$1" ;;
       --build | --rebuild) build_flag="$1" ;;
+      --volume)
+        shift
+        if [ $# -eq 0 ]; then
+          log_error "reset: --volume requires an argument"
+          exit 2
+        fi
+        CLI_VOLUMES="${CLI_VOLUMES}${CLI_VOLUMES:+${NL}}$1"
+        ;;
       -h | --help)
         usage
         return 0

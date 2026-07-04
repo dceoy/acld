@@ -53,14 +53,14 @@ Run `./linux-desktop up` again at any time: it is safe to re-run, will not creat
 
 | Command   | Description                                                        |
 | --------- | ------------------------------------------------------------------- |
-| `up`      | Start the desktop. Idempotent; detached by default. `--build`/`--rebuild` forces an image rebuild first. If the desktop is already running, this only rebuilds the image (it never recreates a running container) -- use `restart --build` to rebuild and recreate. |
+| `up`      | Start the desktop. Idempotent; detached by default. `--build`/`--rebuild` forces an image rebuild first. If the desktop is already running, this only rebuilds the image (it never recreates a running container) -- use `restart --build` to rebuild and recreate. `--volume HOST:CONTAINER[:ro\|rw]` bind-mounts a host path (repeatable). |
 | `down`    | Stop the running desktop container. Safe to run if it's already stopped or doesn't exist. |
-| `restart` | Equivalent to `down` followed by `up`. Accepts `up`'s options.      |
-| `status`  | Print whether the desktop is running and, if so, the noVNC URL. Exits non-zero when not running. |
+| `restart` | Equivalent to `down` followed by `up`. Accepts `up`'s options, including `--volume`. |
+| `status`  | Print whether the desktop is running, the noVNC URL, and configured mounts. `--json` prints machine-readable JSON. Exits non-zero when not running. |
 | `shell`   | Open an interactive shell. Uses the running container if there is one, otherwise starts a temporary one from the image. |
 | `build`   | Build the container image.                                          |
 | `clean`   | Stop and remove the container. `--image`/`--all` also removes the built image (opt-in). |
-| `reset`   | `clean` followed by `up`. Accepts `clean`'s and `up`'s options (e.g. `reset --image --build`). |
+| `reset`   | `clean` followed by `up`. Accepts `clean`'s and `up`'s options (e.g. `reset --image --build --volume ...`). |
 | `doctor`  | Run diagnostics (architecture, macOS version, `container` CLI, container system status, port availability, VNC password) with remediation guidance. |
 | `help`    | Show usage.                                                          |
 
@@ -93,6 +93,47 @@ cp .env.example .env
 | `VNC_GEOMETRY` | `1440x900`              | Desktop resolution              |
 | `VNC_DEPTH`    | `24`                    | VNC color depth                 |
 | `VNC_PASSWORD` | `apple`                 | VNC password                    |
+| `HOST_MOUNTS_FILE` | *(unset)*           | Path to a file listing host bind mounts. Unset by default: no host paths are mounted. See [Host mounts](#host-mounts). |
+
+## Host mounts
+
+No host paths are mounted by default. Mounting is entirely opt-in, two ways:
+
+**Ad hoc, one-off mounts** with `--volume` (repeatable), passed to `up`/`restart`/`reset`:
+
+```sh
+./linux-desktop up --volume "$HOME/Desktop:/home/desktop/Desktop"
+./linux-desktop up \
+  --volume "$HOME/Desktop:/home/desktop/Desktop" \
+  --volume "$HOME/Downloads:/home/desktop/Downloads:ro"
+```
+
+**Persistent mounts** applied on every `up`, via a mounts file (kept out of shell parsing so paths with spaces are safe):
+
+```sh
+cp .mounts.example .mounts
+```
+
+Edit `.mounts` -- one `HOST_PATH:CONTAINER_PATH[:ro|rw]` entry per line:
+
+```text
+/Users/you/Desktop:/home/desktop/Desktop:rw
+/Users/you/Downloads:/home/desktop/Downloads:ro
+```
+
+Then point `.env` at it:
+
+```sh
+echo 'HOST_MOUNTS_FILE=.mounts' >> .env
+```
+
+Notes:
+
+- Mode defaults to `rw` if omitted; use `:ro` for read-only access.
+- `./linux-desktop up` validates that every host path exists before starting the container, and fails with a clear error if one is missing or a spec is malformed.
+- Mounting a path as `rw` prints a warning -- prefer `:ro` unless the desktop actually needs to write there.
+- The container-side path is created automatically by the entrypoint on a best-effort basis (`mkdir -p`). If it lives somewhere the non-root container user can't create (e.g. directly under `/`), pre-create it in a custom image or mount under `/home/desktop` instead.
+- `./linux-desktop status` (and `status --json`) shows mounts configured via `HOST_MOUNTS_FILE`, including whether each host path currently exists. Ad hoc `--volume` flags from a past `up` are not persisted or shown by `status`, since they aren't saved anywhere.
 
 ## Shell access
 
@@ -118,6 +159,7 @@ If the desktop container is already running, this opens a shell inside it. Other
 - The default configuration binds noVNC to `HOST_IP=127.0.0.1`, i.e. only reachable from the Mac itself. Do not set `HOST_IP` to `0.0.0.0` (or any non-loopback address) unless the network is trusted -- noVNC and VNC traffic are not encrypted.
 - Always set a non-default `VNC_PASSWORD` in `.env` before exposing `PORT` beyond localhost. `./linux-desktop doctor` warns if the password is still the default.
 - Avoid publishing `PORT` through port forwarding, tunnels, or reverse proxies without adding transport encryption (e.g. an SSH tunnel or a TLS-terminating proxy) and a strong `VNC_PASSWORD`.
+- Host mounts (see [Host mounts](#host-mounts)) give the desktop direct access to the mounted host path. Only mount what's needed, prefer `:ro` over `:rw`, and remember that anyone who can reach the desktop (via VNC or `./linux-desktop shell`) can read -- and, for `:rw` mounts, write -- those host files.
 
 ## Compatibility notes
 

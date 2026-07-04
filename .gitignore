@@ -3,6 +3,7 @@
 
 # Local environment
 .env
+.mounts
 
 # Logs
 *.log
