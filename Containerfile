@@ -19,12 +19,23 @@ RUN apt-get update \
         novnc \
         procps \
         tigervnc-standalone-server \
+        tigervnc-tools \
         tini \
         websockify \
         xfce4 \
         xfce4-terminal \
-    && groupadd --gid "${USER_GID}" "${USERNAME}" \
-    && useradd --uid "${USER_UID}" --gid "${USER_GID}" --create-home --shell /bin/bash "${USERNAME}" \
+    && if ! getent group "${USER_GID}" >/dev/null; then \
+        groupadd --gid "${USER_GID}" "${USERNAME}"; \
+    fi \
+    && existing_user="$(getent passwd "${USER_UID}" | cut -d: -f1 || true)" \
+    && if [ -n "${existing_user}" ]; then \
+        if [ "${existing_user}" != "${USERNAME}" ]; then \
+            usermod --login "${USERNAME}" --home "/home/${USERNAME}" --move-home "${existing_user}"; \
+        fi; \
+        usermod --gid "${USER_GID}" --shell /bin/bash "${USERNAME}"; \
+    else \
+        useradd --uid "${USER_UID}" --gid "${USER_GID}" --create-home --shell /bin/bash "${USERNAME}"; \
+    fi \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
