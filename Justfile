@@ -1,14 +1,33 @@
-build:
-    ./scripts/build
+up:
+    ./linux-desktop up
 
-run:
-    ./scripts/run
+down:
+    ./linux-desktop down
 
-stop:
-    ./scripts/stop
+restart:
+    ./linux-desktop restart
+
+status:
+    ./linux-desktop status
 
 shell:
-    ./scripts/shell
+    ./linux-desktop shell
+
+build:
+    ./linux-desktop build
+
+clean:
+    ./linux-desktop clean
+
+reset:
+    ./linux-desktop reset
+
+doctor:
+    ./linux-desktop doctor
+
+# deprecated aliases, kept for backward compatibility
+run: up
+stop: down
 
 lint:
-    shellcheck scripts/*
+    shellcheck linux-desktop scripts/*

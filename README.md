@@ -6,7 +6,7 @@ Run a minimal Linux desktop on macOS using Apple Container, XFCE, TigerVNC, and 
 
 - Apple silicon Mac
 - macOS 26 or later
-- Apple `container` CLI
+- Apple `container` CLI ([install instructions](https://github.com/apple/container))
 
 ## Architecture
 
@@ -23,46 +23,53 @@ This repository intentionally keeps the implementation small:
 
 - one `Containerfile`
 - one runtime entrypoint
-- thin shell wrappers around `container build` and `container run`
-- no Docker Compose compatibility layer
-- no Swift wrapper around Apple Containerization APIs
+- one POSIX shell CLI (`./linux-desktop`) that wraps `container build` / `container run`
+- no GUI wrapper, no Docker Compose compatibility layer, no Swift application
 
-## Usage
-
-Start Apple Container if it is not already running:
+## Quick start
 
 ```sh
-container system start
+./linux-desktop up
 ```
 
-Build the image:
+This single, idempotent command:
 
-```sh
-./scripts/build
-```
+- loads configuration from `.env` (falling back to the defaults in `.env.example`)
+- verifies you're on an Apple silicon Mac, running a supported macOS version, with the `container` CLI installed
+- starts the Apple container system if it isn't already running
+- builds the image only if it doesn't already exist
+- starts the desktop container detached, unless it's already running (in which case it does nothing and just prints how to reach it)
+- prints the noVNC URL and the next commands to run
 
-Run the desktop:
+Open the printed URL in a browser (default: `http://localhost:6080/vnc.html`) and log in with the VNC password (default: `apple` -- change this, see [Security](#security)).
 
-```sh
-./scripts/run
-```
+Run `./linux-desktop up` again at any time: it is safe to re-run, will not create a second container, and will not rebuild the image unless asked to.
 
-Open noVNC:
+## CLI reference
 
 ```text
-http://localhost:6080/vnc.html
+./linux-desktop <command> [options]
 ```
 
-Default VNC password:
+| Command   | Description                                                        |
+| --------- | ------------------------------------------------------------------- |
+| `up`      | Start the desktop. Idempotent; detached by default. `--build`/`--rebuild` forces an image rebuild first. If the desktop is already running, this only rebuilds the image (it never recreates a running container) -- use `restart --build` to rebuild and recreate. `--volume HOST:CONTAINER[:ro\|rw]` bind-mounts a host path (repeatable). |
+| `down`    | Stop the running desktop container. Safe to run if it's already stopped or doesn't exist. |
+| `restart` | Equivalent to `down` followed by `up`. Accepts `up`'s options, including `--volume`. |
+| `status`  | Print whether the desktop is running, the noVNC URL, and configured mounts. `--json` prints machine-readable JSON. Exits non-zero when not running. |
+| `shell`   | Open an interactive shell. Uses the running container if there is one, otherwise starts a temporary one from the image. |
+| `build`   | Build the container image.                                          |
+| `clean`   | Stop and remove the container. `--image`/`--all` also removes the built image (opt-in). |
+| `reset`   | `clean` followed by `up`. Accepts `clean`'s and `up`'s options (e.g. `reset --image --build --volume ...`). |
+| `doctor`  | Run diagnostics (architecture, macOS version, `container` CLI, container system status, port availability, VNC password) with remediation guidance. |
+| `help`    | Show usage.                                                          |
 
-```text
-apple
-```
+All commands are idempotent: running `up`, `down`, or `clean` repeatedly is always safe.
 
-Stop the container from another terminal:
+If something isn't working, start with:
 
 ```sh
-./scripts/stop
+./linux-desktop doctor
 ```
 
 ## Configuration
@@ -73,31 +80,90 @@ Copy the sample environment file and edit it as needed:
 cp .env.example .env
 ```
 
-Supported variables:
+`.env` is loaded automatically by `./linux-desktop` (and is git-ignored). Any variable not set in `.env` falls back to the default shown below, which matches `.env.example`.
 
-| Variable       | Default                | Description                 |
-| -------------- | ---------------------- | --------------------------- |
-| `IMAGE`        | `linux-desktop:latest` | Local OCI image name        |
-| `NAME`         | `linux-desktop`        | Container name              |
-| `HOST_IP`      | `127.0.0.1`            | Host bind address           |
-| `PORT`         | `6080`                 | noVNC host port             |
-| `CPUS`         | `4`                    | Container CPU allocation    |
-| `MEMORY`       | `4G`                   | Container memory allocation |
-| `VNC_GEOMETRY` | `1440x900`             | Desktop resolution          |
-| `VNC_DEPTH`    | `24`                   | VNC color depth             |
-| `VNC_PASSWORD` | `apple`                | VNC password                |
+| Variable       | Default                | Description                  |
+| -------------- | ----------------------- | ----------------------------- |
+| `IMAGE`        | `linux-desktop:latest`  | Local OCI image name          |
+| `NAME`         | `linux-desktop`         | Container name                |
+| `HOST_IP`      | `127.0.0.1`             | Host bind address             |
+| `PORT`         | `6080`                  | noVNC host port                |
+| `CPUS`         | `4`                     | Container CPU allocation       |
+| `MEMORY`       | `4G`                    | Container memory allocation    |
+| `VNC_GEOMETRY` | `1440x900`              | Desktop resolution              |
+| `VNC_DEPTH`    | `24`                    | VNC color depth                 |
+| `VNC_PASSWORD` | `apple`                 | VNC password                    |
+| `HOST_MOUNTS_FILE` | *(unset)*           | Path to a file listing host bind mounts. Unset by default: no host paths are mounted. See [Host mounts](#host-mounts). |
+
+## Host mounts
+
+No host paths are mounted by default. Mounting is entirely opt-in, two ways:
+
+**Ad hoc, one-off mounts** with `--volume` (repeatable), passed to `up`/`restart`/`reset`:
+
+```sh
+./linux-desktop up --volume "$HOME/Desktop:/home/desktop/Desktop"
+./linux-desktop up \
+  --volume "$HOME/Desktop:/home/desktop/Desktop" \
+  --volume "$HOME/Downloads:/home/desktop/Downloads:ro"
+```
+
+**Persistent mounts** applied on every `up`, via a mounts file (kept out of shell parsing so paths with spaces are safe):
+
+```sh
+cp .mounts.example .mounts
+```
+
+Edit `.mounts` -- one `HOST_PATH:CONTAINER_PATH[:ro|rw]` entry per line:
+
+```text
+/Users/you/Desktop:/home/desktop/Desktop:rw
+/Users/you/Downloads:/home/desktop/Downloads:ro
+```
+
+Then point `.env` at it:
+
+```sh
+echo 'HOST_MOUNTS_FILE=.mounts' >> .env
+```
+
+Notes:
+
+- Mode defaults to `rw` if omitted; use `:ro` for read-only access.
+- `./linux-desktop up` always validates every mount spec (well-formed, host path exists) and fails with a clear error if one is missing or malformed -- even if the desktop is already running. If the desktop is already running and the mounts are valid, `up` cannot apply them to the live container; it warns and tells you to run `./linux-desktop restart` (with the same `--volume` flags, if any) to actually mount them.
+- Mounting a path as `rw` prints a warning -- prefer `:ro` unless the desktop actually needs to write there.
+- The container-side path is created automatically by the entrypoint on a best-effort basis (`mkdir -p`). If it lives somewhere the non-root container user can't create (e.g. directly under `/`), pre-create it in a custom image or mount under `/home/desktop` instead.
+- `./linux-desktop status` (and `status --json`) shows mounts configured via `HOST_MOUNTS_FILE`, including whether each host path currently exists. Ad hoc `--volume` flags from a past `up` are not persisted or shown by `status`, since they aren't saved anywhere.
 
 ## Shell access
 
-Run an interactive shell in a fresh container:
-
 ```sh
-./scripts/shell
+./linux-desktop shell
 ```
 
-## Security note
+If the desktop container is already running, this opens a shell inside it. Otherwise it starts a temporary, disposable container from the built image.
 
-The default configuration binds noVNC to `127.0.0.1` on the host. Do not expose the noVNC port to untrusted networks, and set a non-default `VNC_PASSWORD` for real use.
+## Cleanup and reset
+
+```sh
+./linux-desktop down           # stop the desktop
+./linux-desktop clean          # stop and remove the container
+./linux-desktop clean --image  # also remove the built image
+./linux-desktop reset          # clean, then start again
+```
+
+`down` and `clean` never fail just because the container is already stopped or doesn't exist. Image deletion is opt-in (`--image`/`--all`) so a plain `clean` never discards the built image.
+
+## Security
+
+- The default configuration binds noVNC to `HOST_IP=127.0.0.1`, i.e. only reachable from the Mac itself. Do not set `HOST_IP` to `0.0.0.0` (or any non-loopback address) unless the network is trusted -- noVNC and VNC traffic are not encrypted.
+- Always set a non-default `VNC_PASSWORD` in `.env` before exposing `PORT` beyond localhost. `./linux-desktop doctor` warns if the password is still the default.
+- Avoid publishing `PORT` through port forwarding, tunnels, or reverse proxies without adding transport encryption (e.g. an SSH tunnel or a TLS-terminating proxy) and a strong `VNC_PASSWORD`.
+- Host mounts (see [Host mounts](#host-mounts)) give the desktop direct access to the mounted host path. Only mount what's needed, prefer `:ro` over `:rw`, and remember that anyone who can reach the desktop (via VNC or `./linux-desktop shell`) can read -- and, for `:rw` mounts, write -- those host files.
+
+## Compatibility notes
+
+`scripts/build`, `scripts/run`, `scripts/stop`, and `scripts/shell` still exist and now delegate to `./linux-desktop build`/`up`/`down`/`shell` respectively. The one behavior change: `scripts/run` now starts the desktop **detached** (it returns immediately instead of blocking the terminal in the foreground). Use `./linux-desktop shell`, `./linux-desktop status`, or `./scripts/stop` to interact with or stop it afterwards.
 
 ## Scope
 
