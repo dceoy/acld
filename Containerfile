@@ -55,5 +55,8 @@ WORKDIR /home/${USERNAME}
 
 EXPOSE 6080
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD ["bash", "-c", "</dev/tcp/127.0.0.1/${NOVNC_PORT}"]
+
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint"]
