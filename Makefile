@@ -18,28 +18,27 @@ MIN_MACOS_MAJOR ?= 26
 .PHONY: help check doctor build up down restart status clean reset shell
 
 help:
-	@cat <<'EOF'
-Usage: ./linux-desktop <command> [options]
-
-Commands:
-  up          Start the desktop; safe to run repeatedly
-                --build, --rebuild   Rebuild the image before starting
-                --volume HOST:CONTAINER[:ro|rw]
-                                     Bind-mount a host path (repeatable)
-  down        Stop the running desktop container
-  restart     Stop and start the desktop; accepts up's options
-  status      Show whether the desktop is running
-                --json               Print a compact JSON status
-  shell       Open a shell in the running container, or a temporary one
-  build       Build the container image
-  clean       Stop and remove the container
-                --image, --all       Also remove the built image
-  reset       Clean up, then start again; accepts clean/up options
-  doctor      Run basic diagnostics
-  help        Show this help message
-
-Configuration is read from .env when present, with Makefile defaults otherwise.
-EOF
+	@printf '%s\n' \
+		'Usage: ./linux-desktop <command> [options]' \
+		'' \
+		'Commands:' \
+		'  up          Start the desktop; safe to run repeatedly' \
+		'                --build, --rebuild   Rebuild the image before starting' \
+		'                --volume HOST:CONTAINER[:ro|rw]' \
+		'                                     Bind-mount a host path (repeatable)' \
+		'  down        Stop the running desktop container' \
+		"  restart     Stop and start the desktop; accepts up's options" \
+		'  status      Show whether the desktop is running' \
+		'                --json               Print a compact JSON status' \
+		'  shell       Open a shell in the running container, or a temporary one' \
+		'  build       Build the container image' \
+		'  clean       Stop and remove the container' \
+		'                --image, --all       Also remove the built image' \
+		'  reset       Clean up, then start again; accepts clean/up options' \
+		'  doctor      Run basic diagnostics' \
+		'  help        Show this help message' \
+		'' \
+		'Configuration is read from .env when present, with Makefile defaults otherwise.'
 
 check:
 	@set -eu; \
