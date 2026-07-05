@@ -15,28 +15,34 @@ VNC_PASSWORD ?= apple
 HOST_MOUNTS_FILE ?=
 MIN_MACOS_MAJOR ?= 26
 
-.PHONY: help check doctor build up down restart status clean reset shell
+.PHONY: help check doctor build up rebuild down restart restart-rebuild status status-json clean clean-image reset reset-image reset-rebuild shell
 
 help:
 	@printf '%s\n' \
-		'Usage: ./linux-desktop <command> [options]' \
+		'Usage: make <target> [VARIABLE=value ...]' \
 		'' \
-		'Commands:' \
-		'  up          Start the desktop; safe to run repeatedly' \
-		'                --build, --rebuild   Rebuild the image before starting' \
-		'                --volume HOST:CONTAINER[:ro|rw]' \
-		'                                     Bind-mount a host path (repeatable)' \
-		'  down        Stop the running desktop container' \
-		"  restart     Stop and start the desktop; accepts up's options" \
-		'  status      Show whether the desktop is running' \
-		'                --json               Print a compact JSON status' \
-		'  shell       Open a shell in the running container, or a temporary one' \
-		'  build       Build the container image' \
-		'  clean       Stop and remove the container' \
-		'                --image, --all       Also remove the built image' \
-		'  reset       Clean up, then start again; accepts clean/up options' \
-		'  doctor      Run basic diagnostics' \
-		'  help        Show this help message' \
+		'Targets:' \
+		'  up                Start the desktop; safe to run repeatedly' \
+		'  rebuild           Rebuild the image, then run up' \
+		'  down              Stop the running desktop container' \
+		'  restart           Stop and start the desktop' \
+		'  restart-rebuild   Stop, rebuild, and start the desktop' \
+		'  status            Show whether the desktop is running' \
+		'  status-json       Print a compact JSON status' \
+		'  shell             Open a shell in the running container, or a temporary one' \
+		'  build             Build the container image' \
+		'  clean             Stop and remove the container' \
+		'  clean-image       Stop and remove the container and built image' \
+		'  reset             Clean up, then start again' \
+		'  reset-image       Clean up including the image, then start again' \
+		'  reset-rebuild     Clean up, rebuild, then start again' \
+		'  doctor            Run basic diagnostics' \
+		'  help              Show this help message' \
+		'' \
+		'Common variables:' \
+		'  IMAGE, NAME, HOST_IP, PORT, CPUS, MEMORY, VNC_GEOMETRY, VNC_DEPTH, VNC_PASSWORD' \
+		'  HOST_MOUNTS_FILE=.mounts' \
+		'  CLI_VOLUMES="HOST:CONTAINER[:ro|rw]"' \
 		'' \
 		'Configuration is read from .env when present, with Makefile defaults otherwise.'
 
@@ -77,7 +83,7 @@ up: check
 		fi; \
 		echo "Container '$(NAME)' is already running."; \
 		if [ -n "$${CLI_VOLUMES:-}" ] || [ -n "$(HOST_MOUNTS_FILE)" ]; then \
-			echo "WARNING: requested mounts are not applied to an already-running container; run './linux-desktop restart' to recreate it." >&2; \
+			echo "WARNING: requested mounts are not applied to an already-running container; run 'make restart' to recreate it." >&2; \
 		fi; \
 		if [ "$(HOST_IP)" = 0.0.0.0 ]; then host=localhost; else host="$(HOST_IP)"; fi; \
 		echo "noVNC:  http://$$host:$(PORT)/vnc.html"; \
@@ -135,6 +141,9 @@ up: check
 	echo "Container '$(NAME)' started."; \
 	echo "noVNC:  http://$$host:$(PORT)/vnc.html"
 
+rebuild:
+	@$(MAKE) --no-print-directory BUILD=1 up
+
 down:
 	@set -eu; \
 	if container list --quiet 2>/dev/null | grep -Fx "$(NAME)" >/dev/null; then \
@@ -147,6 +156,10 @@ down:
 restart: check
 	@$(MAKE) --no-print-directory down
 	@$(MAKE) --no-print-directory up
+
+restart-rebuild:
+	@$(MAKE) --no-print-directory down
+	@$(MAKE) --no-print-directory BUILD=1 up
 
 status:
 	@set -eu; \
@@ -163,6 +176,9 @@ status:
 	fi; \
 	[ "$$running" = true ]
 
+status-json:
+	@$(MAKE) --no-print-directory JSON=1 status
+
 clean:
 	@set -eu; \
 	if container list --quiet 2>/dev/null | grep -Fx "$(NAME)" >/dev/null; then container stop "$(NAME)" >/dev/null 2>&1 || true; fi; \
@@ -170,9 +186,19 @@ clean:
 	if [ "$${REMOVE_IMAGE:-0}" = 1 ] && container image list --quiet 2>/dev/null | grep -Fx "$(IMAGE)" >/dev/null; then container image delete "$(IMAGE)" >/dev/null 2>&1 || true; fi; \
 	echo "Clean complete."
 
+clean-image:
+	@$(MAKE) --no-print-directory REMOVE_IMAGE=1 clean
+
 reset: check
 	@$(MAKE) --no-print-directory clean
 	@$(MAKE) --no-print-directory up
+
+reset-image:
+	@$(MAKE) --no-print-directory REMOVE_IMAGE=1 reset
+
+reset-rebuild:
+	@$(MAKE) --no-print-directory clean
+	@$(MAKE) --no-print-directory BUILD=1 up
 
 shell: check
 	@set -eu; \
@@ -180,5 +206,5 @@ shell: check
 	if container list --quiet 2>/dev/null | grep -Fx "$(NAME)" >/dev/null; then \
 		exec container exec --interactive --tty "$(NAME)" /bin/bash; \
 	fi; \
-	if ! container image list --quiet 2>/dev/null | grep -Fx "$(IMAGE)" >/dev/null; then echo "ERROR: image '$(IMAGE)' not found. Run './linux-desktop build' first." >&2; exit 1; fi; \
+	if ! container image list --quiet 2>/dev/null | grep -Fx "$(IMAGE)" >/dev/null; then echo "ERROR: image '$(IMAGE)' not found. Run 'make build' first." >&2; exit 1; fi; \
 	exec container run --rm --interactive --tty --entrypoint /bin/bash "$(IMAGE)"
