@@ -21,8 +21,8 @@ append_volume() {
 "}$1
 }
 
-usage() {
-  exec "${MAKE_BIN}" --no-print-directory help
+print_usage() {
+  "${MAKE_BIN}" --no-print-directory help
 }
 
 run_make() {
@@ -45,7 +45,8 @@ parse_up_options() {
         append_volume "$1"
         ;;
       -h | --help)
-        usage
+        print_usage
+        exit 0
         ;;
       *)
         echo "ERROR: unknown option for ${cmd}: $1" >&2
@@ -63,7 +64,8 @@ parse_clean_options() {
         REMOVE_IMAGE=1
         ;;
       -h | --help)
-        usage
+        print_usage
+        exit 0
         ;;
       *)
         echo "ERROR: unknown option for ${cmd}: $1" >&2
@@ -81,7 +83,8 @@ parse_status_options() {
         JSON=1
         ;;
       -h | --help)
-        usage
+        print_usage
+        exit 0
         ;;
       *)
         echo "ERROR: unknown option for status: $1" >&2
@@ -96,13 +99,15 @@ reject_options() {
   while [ $# -gt 0 ]; do
     case "$1" in
       -h | --help)
-        usage
+        print_usage
+        exit 0
         ;;
       *)
         echo "ERROR: unknown option for ${cmd}: $1" >&2
         exit 2
         ;;
     esac
+    shift
   done
 }
 
@@ -129,7 +134,8 @@ case "${cmd}" in
           append_volume "$1"
           ;;
         -h | --help)
-          usage
+          print_usage
+          exit 0
           ;;
         *)
           echo "ERROR: unknown option for reset: $1" >&2
@@ -153,10 +159,11 @@ case "${cmd}" in
     run_make "${cmd}"
     ;;
   help | -h | --help)
-    usage
+    print_usage
     ;;
   *)
     echo "ERROR: unknown command: ${cmd}" >&2
-    usage
+    print_usage >&2
+    exit 2
     ;;
 esac
