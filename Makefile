@@ -18,6 +18,52 @@ MIN_MACOS_MAJOR ?= 26
 export IMAGE NAME HOST_IP PORT CPUS MEMORY VNC_GEOMETRY VNC_DEPTH VNC_PASSWORD HOST_MOUNTS_FILE MIN_MACOS_MAJOR
 export CLI_VOLUMES
 
+define MOUNT_HELPERS
+collect_mount_specs() { \
+	local line specs_file="$${1:?}"; \
+	if [[ -n "$${CLI_VOLUMES:-}" ]]; then printf '%s\n' "$$CLI_VOLUMES" >>"$$specs_file"; fi; \
+	if [[ -n "$${HOST_MOUNTS_FILE:-}" ]]; then \
+		if [[ ! -f "$$HOST_MOUNTS_FILE" ]]; then echo "ERROR: HOST_MOUNTS_FILE is set to '$$HOST_MOUNTS_FILE' but that file does not exist." >&2; return 1; fi; \
+		while IFS= read -r line || [[ -n "$$line" ]]; do \
+			case "$$line" in ''|\#*) continue ;; esac; \
+			printf '%s\n' "$$line" >>"$$specs_file"; \
+		done < "$$HOST_MOUNTS_FILE"; \
+	fi; \
+}; \
+create_mount_specs_file() { \
+	specs_file=$$(mktemp "$${TMPDIR:-/tmp}/linux-desktop-mounts.XXXXXX"); \
+	trap 'rm -f "$$specs_file"' EXIT HUP INT TERM; \
+	collect_mount_specs "$$specs_file"; \
+}; \
+parse_mount_spec() { \
+	local extra spec="$${1:?}"; \
+	IFS=: read -r host target mode extra <<<"$$spec"; \
+	if [[ -n "$${extra:-}" || "$$spec" == *: ]]; then echo "ERROR: invalid mount '$$spec' (expected HOST:CONTAINER[:ro|rw])." >&2; return 2; fi; \
+	[[ -n "$$host" && -n "$$target" ]] || { echo "ERROR: invalid mount '$$spec'." >&2; return 2; }; \
+	mode="$${mode:-rw}"; \
+	case "$$mode" in ro|rw) : ;; *) echo "ERROR: invalid mount mode '$$mode' in '$$spec' (expected 'ro' or 'rw')." >&2; return 2 ;; esac; \
+	[[ -e "$$host" ]] || { echo "ERROR: host mount path does not exist: '$$host'." >&2; return 1; }; \
+	case "$$target" in /*) : ;; *) echo "ERROR: container mount path must be absolute: '$$target'." >&2; return 2 ;; esac; \
+}; \
+validate_mount_specs() { \
+	local spec specs_file="$${1:?}"; \
+	while IFS= read -r spec || [[ -n "$$spec" ]]; do \
+		[[ -z "$$spec" ]] && continue; \
+		parse_mount_spec "$$spec"; \
+	done < "$$specs_file"; \
+}; \
+append_mount_options() { \
+	local spec specs_file="$${1:?}"; \
+	while IFS= read -r spec || [[ -n "$$spec" ]]; do \
+		[[ -z "$$spec" ]] && continue; \
+		parse_mount_spec "$$spec"; \
+		if [[ "$$mode" == rw ]]; then echo "WARNING: mounting '$$host' as writable at '$$target'. Prefer ':ro' unless write access is required." >&2; fi; \
+		volumes+=(--volume "$$host:$$target:$$mode"); \
+		mount_targets="$${mount_targets:+$$mount_targets:}$$target"; \
+	done < "$$specs_file"; \
+};
+endef
+
 .PHONY: help check _validate-mounts doctor build up down restart status clean clean-image shell
 
 help:
@@ -62,27 +108,9 @@ check:
 
 _validate-mounts:
 	@set -euo pipefail; \
-	specs_file=$$(mktemp "$${TMPDIR:-/tmp}/linux-desktop-mounts.XXXXXX"); \
-	trap 'rm -f "$$specs_file"' EXIT HUP INT TERM; \
-	if [[ -n "$${CLI_VOLUMES:-}" ]]; then printf '%s\n' "$$CLI_VOLUMES" >>"$$specs_file"; fi; \
-	if [[ -n "$${HOST_MOUNTS_FILE:-}" ]]; then \
-		if [[ ! -f "$$HOST_MOUNTS_FILE" ]]; then echo "ERROR: HOST_MOUNTS_FILE is set to '$$HOST_MOUNTS_FILE' but that file does not exist." >&2; exit 1; fi; \
-		while IFS= read -r line || [[ -n "$$line" ]]; do \
-			case "$$line" in ''|\#*) continue ;; esac; \
-			printf '%s\n' "$$line" >>"$$specs_file"; \
-		done < "$$HOST_MOUNTS_FILE"; \
-	fi; \
-	while IFS= read -r spec || [[ -n "$$spec" ]]; do \
-		[[ -z "$$spec" ]] && continue; \
-		IFS=: read -r host target mode extra <<<"$$spec"; \
-		if [[ -n "$${extra:-}" || "$$spec" == *: ]]; then echo "ERROR: invalid mount '$$spec' (expected HOST:CONTAINER[:ro|rw])." >&2; exit 2; fi; \
-		[[ -n "$$host" && -n "$$target" ]] || { echo "ERROR: invalid mount '$$spec'." >&2; exit 2; }; \
-		mode="$${mode:-rw}"; \
-		case "$$mode" in ro|rw) : ;; *) echo "ERROR: invalid mount mode '$$mode' in '$$spec' (expected 'ro' or 'rw')." >&2; exit 2 ;; esac; \
-		[[ -e "$$host" ]] || { echo "ERROR: host mount path does not exist: '$$host'." >&2; exit 1; }; \
-		case "$$target" in /*) : ;; *) echo "ERROR: container mount path must be absolute: '$$target'." >&2; exit 2 ;; esac; \
-		if [[ "$$mode" == rw ]]; then echo "WARNING: mounting '$$host' as writable at '$$target'. Prefer ':ro' unless write access is required." >&2; fi; \
-	done < "$$specs_file"
+	$(MOUNT_HELPERS) \
+	create_mount_specs_file; \
+	validate_mount_specs "$$specs_file"
 
 doctor:
 	@set -euo pipefail; \
@@ -97,6 +125,7 @@ build: check
 
 up: check _validate-mounts
 	@set -euo pipefail; \
+	$(MOUNT_HELPERS) \
 	if [[ -n "$${CLI_VOLUMES:-}" || -n "$${HOST_MOUNTS_FILE:-}" ]]; then has_mounts=1; else has_mounts=0; fi; \
 	container system status >/dev/null 2>&1 || container system start; \
 	if container list --quiet 2>/dev/null | grep -Fx "$$NAME" >/dev/null; then \
@@ -113,31 +142,10 @@ up: check _validate-mounts
 		echo "Removing stale container '$$NAME'..."; \
 		container delete "$$NAME" >/dev/null 2>&1 || true; \
 	fi; \
-	specs_file=$$(mktemp "$${TMPDIR:-/tmp}/linux-desktop-mounts.XXXXXX"); \
-	trap 'rm -f "$$specs_file"' EXIT HUP INT TERM; \
-	if [[ -n "$${CLI_VOLUMES:-}" ]]; then printf '%s\n' "$$CLI_VOLUMES" >>"$$specs_file"; fi; \
-	if [[ -n "$${HOST_MOUNTS_FILE:-}" ]]; then \
-		if [[ ! -f "$$HOST_MOUNTS_FILE" ]]; then echo "ERROR: HOST_MOUNTS_FILE is set to '$$HOST_MOUNTS_FILE' but that file does not exist." >&2; exit 1; fi; \
-		while IFS= read -r line || [[ -n "$$line" ]]; do \
-			case "$$line" in ''|\#*) continue ;; esac; \
-			printf '%s\n' "$$line" >>"$$specs_file"; \
-		done < "$$HOST_MOUNTS_FILE"; \
-	fi; \
 	mount_targets=; \
 	volumes=(); \
-	while IFS= read -r spec || [[ -n "$$spec" ]]; do \
-		[[ -z "$$spec" ]] && continue; \
-		IFS=: read -r host target mode extra <<<"$$spec"; \
-		if [[ -n "$${extra:-}" || "$$spec" == *: ]]; then echo "ERROR: invalid mount '$$spec' (expected HOST:CONTAINER[:ro|rw])." >&2; exit 2; fi; \
-		[[ -n "$$host" && -n "$$target" ]] || { echo "ERROR: invalid mount '$$spec'." >&2; exit 2; }; \
-		mode="$${mode:-rw}"; \
-		case "$$mode" in ro|rw) : ;; *) echo "ERROR: invalid mount mode '$$mode' in '$$spec' (expected 'ro' or 'rw')." >&2; exit 2 ;; esac; \
-		[[ -e "$$host" ]] || { echo "ERROR: host mount path does not exist: '$$host'." >&2; exit 1; }; \
-		case "$$target" in /*) : ;; *) echo "ERROR: container mount path must be absolute: '$$target'." >&2; exit 2 ;; esac; \
-		if [[ "$$mode" == rw ]]; then echo "WARNING: mounting '$$host' as writable at '$$target'. Prefer ':ro' unless write access is required." >&2; fi; \
-		volumes+=(--volume "$$host:$$target:$$mode"); \
-		mount_targets="$${mount_targets:+$$mount_targets:}$$target"; \
-	done < "$$specs_file"; \
+	create_mount_specs_file; \
+	append_mount_options "$$specs_file"; \
 	echo "Starting container '$$NAME'..."; \
 	container run --detach --rm \
 		--name "$$NAME" \
