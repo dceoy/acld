@@ -25,7 +25,8 @@ This repository intentionally keeps the implementation small:
 - one `Containerfile`
 - one container runtime entrypoint (`scripts/entrypoint`)
 - one `Makefile` that wraps Apple `container` operations
-- no host-side shell wrapper scripts, GUI wrapper, Docker Compose compatibility layer, Swift application, or host mount manager
+- opt-in host bind mounts only when explicitly configured
+- no host-side shell wrapper scripts, GUI wrapper, Docker Compose compatibility layer, or Swift application
 
 ## Quick start
 
@@ -92,12 +93,52 @@ cp .env.example .env
 | `VNC_GEOMETRY` | `1440x900`             | Desktop resolution         |
 | `VNC_DEPTH`    | `24`                   | VNC color depth            |
 | `VNC_PASSWORD` | `apple`                | VNC password               |
+| `HOST_MOUNTS_FILE` | *(unset)*          | Path to a file listing host bind mounts. Unset by default: no host paths are mounted. See [Host mounts](#host-mounts). |
 
 Make variables can also be passed inline for one-off overrides:
 
 ```sh
 PORT=6081 MEMORY=8G make up
 ```
+
+## Host mounts
+
+No host paths are mounted by default. Mounting is opt-in, two ways:
+
+**Ad hoc, one-off mount** with `CLI_VOLUMES`:
+
+```sh
+CLI_VOLUMES="$HOME/Desktop:/home/desktop/Desktop" make up
+CLI_VOLUMES="$HOME/Downloads:/home/desktop/Downloads:ro" make restart
+```
+
+For multiple mounts, prefer a mounts file.
+
+**Persistent mounts** applied on every `up`, via a mounts file:
+
+```sh
+cp .mounts.example .mounts
+```
+
+Edit `.mounts` -- one `HOST_PATH:CONTAINER_PATH[:ro|rw]` entry per line:
+
+```text
+/Users/you/Desktop:/home/desktop/Desktop:rw
+/Users/you/Downloads:/home/desktop/Downloads:ro
+```
+
+Then point `.env` at it:
+
+```sh
+echo 'HOST_MOUNTS_FILE=.mounts' >> .env
+```
+
+Notes:
+
+- Mode defaults to `rw` if omitted; use `:ro` for read-only access.
+- `make up` validates every mount spec before starting a new container. If the desktop is already running, requested mounts are not applied to the live container; run `make restart` to recreate it.
+- Mounting a path as `rw` prints a warning -- prefer `:ro` unless the desktop actually needs to write there.
+- The container-side path is created automatically by the entrypoint on a best-effort basis (`mkdir -p`). If it lives somewhere the non-root container user can't create (e.g. directly under `/`), pre-create it in a custom image or mount under `/home/desktop` instead.
 
 ## Shell access
 
@@ -122,7 +163,8 @@ make clean-image   # also remove the built image
 - The default configuration binds noVNC to `HOST_IP=127.0.0.1`, i.e. only reachable from the Mac itself. Do not set `HOST_IP` to `0.0.0.0` (or any non-loopback address) unless the network is trusted -- noVNC and VNC traffic are not encrypted.
 - Always set a non-default `VNC_PASSWORD` in `.env` before exposing `PORT` beyond localhost. `make doctor` warns if the password is still the default.
 - Avoid publishing `PORT` through port forwarding, tunnels, or reverse proxies without adding transport encryption (e.g. an SSH tunnel or a TLS-terminating proxy) and a strong `VNC_PASSWORD`.
+- Host mounts give the desktop direct access to the mounted host path. Only mount what's needed, prefer `:ro` over `:rw`, and remember that anyone who can reach the desktop (via VNC or `make shell`) can read -- and, for `:rw` mounts, write -- those host files.
 
 ## Scope
 
-This project is a minimal desktop launcher for local development and experimentation. GPU acceleration, Wayland compositors, persistent desktop state, host mount presets, and multi-container orchestration are intentionally out of scope.
+This project is a minimal desktop launcher for local development and experimentation. GPU acceleration, Wayland compositors, persistent desktop state, and multi-container orchestration are intentionally out of scope.
