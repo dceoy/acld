@@ -12,9 +12,11 @@ MEMORY ?= 4G
 VNC_GEOMETRY ?= 1440x900
 VNC_DEPTH ?= 24
 VNC_PASSWORD ?= apple
+HOST_MOUNTS_FILE ?=
 MIN_MACOS_MAJOR ?= 26
 
-export IMAGE NAME HOST_IP PORT CPUS MEMORY VNC_GEOMETRY VNC_DEPTH VNC_PASSWORD MIN_MACOS_MAJOR
+export IMAGE NAME HOST_IP PORT CPUS MEMORY VNC_GEOMETRY VNC_DEPTH VNC_PASSWORD HOST_MOUNTS_FILE MIN_MACOS_MAJOR
+export CLI_VOLUMES
 
 .PHONY: help check doctor build up down restart status clean clean-image shell
 
@@ -36,6 +38,8 @@ help:
 		'' \
 		'Common variables:' \
 		'  IMAGE, NAME, HOST_IP, PORT, CPUS, MEMORY, VNC_GEOMETRY, VNC_DEPTH, VNC_PASSWORD' \
+		'  HOST_MOUNTS_FILE=.mounts' \
+		'  CLI_VOLUMES="HOST:CONTAINER[:ro|rw]"' \
 		'' \
 		'Configuration is read from .env when present, with Makefile defaults otherwise.'
 
@@ -68,9 +72,11 @@ build: check
 
 up: check
 	@set -eu; \
+	if [ -n "$${CLI_VOLUMES:-}" ] || [ -n "$${HOST_MOUNTS_FILE:-}" ]; then has_mounts=1; else has_mounts=0; fi; \
 	container system status >/dev/null 2>&1 || container system start; \
 	if container list --quiet 2>/dev/null | grep -Fx "$$NAME" >/dev/null; then \
 		echo "Container '$$NAME' is already running."; \
+		if [ "$$has_mounts" = 1 ]; then echo "WARNING: requested mounts are not applied to an already-running container; run 'make restart' to recreate it." >&2; fi; \
 		if [ "$$HOST_IP" = 0.0.0.0 ]; then host=localhost; else host="$$HOST_IP"; fi; \
 		echo "noVNC:  http://$$host:$$PORT/vnc.html"; \
 		exit 0; \
@@ -82,6 +88,35 @@ up: check
 		echo "Removing stale container '$$NAME'..."; \
 		container delete "$$NAME" >/dev/null 2>&1 || true; \
 	fi; \
+	specs_file=$$(mktemp "$${TMPDIR:-/tmp}/linux-desktop-mounts.XXXXXX"); \
+	trap 'rm -f "$$specs_file"' EXIT HUP INT TERM; \
+	if [ -n "$${CLI_VOLUMES:-}" ]; then printf '%s\n' "$$CLI_VOLUMES" >>"$$specs_file"; fi; \
+	if [ -n "$${HOST_MOUNTS_FILE:-}" ]; then \
+		if [ ! -f "$$HOST_MOUNTS_FILE" ]; then echo "ERROR: HOST_MOUNTS_FILE is set to '$$HOST_MOUNTS_FILE' but that file does not exist." >&2; exit 1; fi; \
+		while IFS= read -r line || [ -n "$$line" ]; do \
+			case "$$line" in ''|\#*) continue ;; esac; \
+			printf '%s\n' "$$line" >>"$$specs_file"; \
+		done < "$$HOST_MOUNTS_FILE"; \
+	fi; \
+	mount_targets=; \
+	set --; \
+	while IFS= read -r spec || [ -n "$$spec" ]; do \
+		[ -z "$$spec" ] && continue; \
+		rest=$${spec#*:}; \
+		if [ "$$rest" = "$$spec" ]; then echo "ERROR: invalid mount '$$spec' (expected HOST:CONTAINER[:ro|rw])." >&2; exit 2; fi; \
+		host=$${spec%%:*}; \
+		case "$$rest" in \
+			*:ro) mode=ro; target=$${rest%:ro} ;; \
+			*:rw) mode=rw; target=$${rest%:rw} ;; \
+			*) mode=rw; target=$$rest ;; \
+		esac; \
+		[ -n "$$host" ] && [ -n "$$target" ] || { echo "ERROR: invalid mount '$$spec'." >&2; exit 2; }; \
+		[ -e "$$host" ] || { echo "ERROR: host mount path does not exist: '$$host'." >&2; exit 1; }; \
+		case "$$target" in /*) : ;; *) echo "ERROR: container mount path must be absolute: '$$target'." >&2; exit 2 ;; esac; \
+		if [ "$$mode" = rw ]; then echo "WARNING: mounting '$$host' as writable at '$$target'. Prefer ':ro' unless write access is required." >&2; fi; \
+		set -- "$$@" --volume "$$host:$$target:$$mode"; \
+		mount_targets=$${mount_targets:+$$mount_targets:}$$target; \
+	done < "$$specs_file"; \
 	echo "Starting container '$$NAME'..."; \
 	container run --detach --rm \
 		--name "$$NAME" \
@@ -91,6 +126,8 @@ up: check
 		--env "VNC_GEOMETRY=$$VNC_GEOMETRY" \
 		--env "VNC_DEPTH=$$VNC_DEPTH" \
 		--env "VNC_PASSWORD=$$VNC_PASSWORD" \
+		--env "MOUNT_TARGETS=$$mount_targets" \
+		"$$@" \
 		"$$IMAGE" >/dev/null; \
 	if [ "$$HOST_IP" = 0.0.0.0 ]; then host=localhost; else host="$$HOST_IP"; fi; \
 	echo "Container '$$NAME' started."; \
