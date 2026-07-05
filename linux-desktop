@@ -11,14 +11,15 @@ if [ $# -gt 0 ]; then
   shift
 fi
 
+NL='
+'
 CLI_VOLUMES=${CLI_VOLUMES:-}
 BUILD=${BUILD:-0}
 REMOVE_IMAGE=${REMOVE_IMAGE:-0}
 JSON=${JSON:-0}
 
 append_volume() {
-  CLI_VOLUMES=${CLI_VOLUMES}${CLI_VOLUMES:+"
-"}$1
+  CLI_VOLUMES=${CLI_VOLUMES}${CLI_VOLUMES:+${NL}}$1
 }
 
 print_usage() {
