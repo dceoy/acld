@@ -144,6 +144,7 @@ down:
 	fi
 
 restart: check
+	@./validate-mounts.sh
 	@$(MAKE) --no-print-directory down
 	@$(MAKE) --no-print-directory up
 
