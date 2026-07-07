@@ -2,9 +2,9 @@ FROM ubuntu:26.04
 
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 
-LABEL org.opencontainers.image.title="Apple Container Linux Desktop" \
+LABEL org.opencontainers.image.title="acld" \
       org.opencontainers.image.description="Minimal XFCE desktop for Apple Container with TigerVNC and noVNC" \
-      org.opencontainers.image.source="https://github.com/dceoy/apple-container-linux-desktop" \
+      org.opencontainers.image.source="https://github.com/dceoy/acld" \
       org.opencontainers.image.licenses="MIT"
 
 ARG DEBIAN_FRONTEND=noninteractive
