@@ -95,7 +95,7 @@ up: check
 	container system status >/dev/null 2>&1 || container system start; \
 	if $(CONTAINER_RUNNING); then \
 		echo "Container '$$NAME' is already running."; \
-		if (( $${#volumes[@]} )); then echo "WARNING: requested mounts are not applied to an already-running container; run 'make down up' to recreate it." >&2; fi; \
+		if (( $${#volumes[@]} )); then echo "WARNING: requested mounts are not applied to an already-running container; run 'make down && make up' to recreate it." >&2; fi; \
 		echo "noVNC:  $(NOVNC_URL)"; exit 0; \
 	fi; \
 	if ! $(IMAGE_EXISTS); then $(MAKE) --no-print-directory build; fi; \
