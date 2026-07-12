@@ -49,7 +49,7 @@ load_mounts() { \
 };
 endef
 
-.PHONY: help check doctor build up down restart status clean clean-image shell
+.PHONY: help check build up down status clean-image shell
 
 help:
 	@printf '%s\n' \
@@ -58,13 +58,10 @@ help:
 		'Targets:' \
 		'  up           Start the desktop; safe to run repeatedly' \
 		'  down         Stop the running desktop container' \
-		'  restart      Stop and start the desktop' \
 		'  status       Show whether the desktop is running' \
 		'  shell        Open a shell in the running container, or a temporary one' \
 		'  build        Build the container image' \
-		'  clean        Stop and remove the container' \
 		'  clean-image  Stop and remove the container and built image' \
-		'  doctor       Run basic diagnostics' \
 		'  help         Show this help message' \
 		'' \
 		'Common variables:' \
@@ -87,13 +84,6 @@ check:
 	else echo "WARNING: sw_vers is unavailable; continuing without macOS version validation." >&2; fi; \
 	command -v container >/dev/null 2>&1 || { echo "ERROR: Apple 'container' CLI was not found in PATH." >&2; exit 1; }
 
-doctor:
-	@set -euo pipefail; \
-	echo "== acld doctor =="; \
-	if $(MAKE) --no-print-directory check; then echo "[ OK ] Platform prerequisites"; else echo "[FAIL] Platform prerequisites"; exit 1; fi; \
-	if container system status >/dev/null 2>&1; then echo "[ OK ] Apple container system: running"; else echo "[WARN] Apple container system: not running; 'up' will start it"; fi; \
-	if [[ "$$VNC_PASSWORD" == apple ]]; then echo "[WARN] VNC_PASSWORD: still set to the default value"; else echo "[ OK ] VNC_PASSWORD: overridden from the default"; fi
-
 build: check
 	@container build --platform linux/arm64 --tag "$$IMAGE" .
 
@@ -101,10 +91,11 @@ up: check
 	@set -euo pipefail; \
 	$(MOUNT_HELPERS) \
 	load_mounts; \
+	if [[ "$$VNC_PASSWORD" == apple ]]; then echo "WARNING: VNC_PASSWORD is still set to the default value." >&2; fi; \
 	container system status >/dev/null 2>&1 || container system start; \
 	if $(CONTAINER_RUNNING); then \
 		echo "Container '$$NAME' is already running."; \
-		if (( $${#volumes[@]} )); then echo "WARNING: requested mounts are not applied to an already-running container; run 'make restart' to recreate it." >&2; fi; \
+		if (( $${#volumes[@]} )); then echo "WARNING: requested mounts are not applied to an already-running container; run 'make down up' to recreate it." >&2; fi; \
 		echo "noVNC:  $(NOVNC_URL)"; exit 0; \
 	fi; \
 	if ! $(IMAGE_EXISTS); then $(MAKE) --no-print-directory build; fi; \
@@ -129,21 +120,15 @@ down:
 		echo "Stopping container '$$NAME'..."; container stop "$$NAME" >/dev/null 2>&1 || true; \
 	else echo "Container '$$NAME' is not running."; fi
 
-restart:
-	@$(MAKE) --no-print-directory down
-	@$(MAKE) --no-print-directory up
-
 status:
 	@echo "Container: $$NAME"; \
 	if $(CONTAINER_RUNNING); then echo "Status:    running"; echo "noVNC:     $(NOVNC_URL)"; \
 	elif $(CONTAINER_EXISTS); then echo "Status:    stopped (stale container present)"; exit 1; \
 	else echo "Status:    not running"; exit 1; fi
 
-clean: down
+clean-image:
+	@if $(CONTAINER_RUNNING); then container stop "$$NAME" >/dev/null 2>&1 || true; fi
 	@if $(CONTAINER_EXISTS); then container delete "$$NAME" >/dev/null 2>&1 || true; fi
-	@echo "Clean complete."
-
-clean-image: clean
 	@if $(IMAGE_EXISTS); then container image delete "$$IMAGE" >/dev/null 2>&1 || true; fi
 	@echo "Image clean complete."
 
