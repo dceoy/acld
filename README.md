@@ -108,11 +108,11 @@ make down && CLI_VOLUMES="$HOME/Downloads:/home/agent/Downloads:ro" make up
 For multiple persistent mounts, create a local mounts file and point `.env` at it. The expected format is documented in `.env.example`.
 
 ```sh
-cat >.mounts <<'EOF'
+cat > .mounts << EOF
 /Users/you/Desktop:/home/agent/Desktop:rw
 /Users/you/Downloads:/home/agent/Downloads:ro
 EOF
-echo 'HOST_MOUNTS_FILE=.mounts' >>.env
+echo 'HOST_MOUNTS_FILE=.mounts' >> .env
 ```
 
 Notes:
