@@ -2,13 +2,13 @@
 
 set -euo pipefail
 
+# Create requested bind-mount target directories on a best-effort basis.
 # Paths outside what this non-root user can create must already exist.
 if [[ -n "${MOUNT_TARGETS:-}" ]]; then
-  declare -a mount_targets
   IFS=':' read -r -a mount_targets <<< "${MOUNT_TARGETS}"
   for mount_target in "${mount_targets[@]}"; do
     [[ -z "${mount_target}" ]] && continue
-    if ! mkdir -p -- "${mount_target}" 2> /dev/null; then
+    if ! mkdir -p "${mount_target}" 2> /dev/null; then
       printf 'WARNING: could not create mount target %s -- ensure it already exists and is writable\n' "${mount_target}" >&2
     fi
   done
