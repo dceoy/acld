@@ -13,39 +13,50 @@ readonly VNC_DEPTH="${VNC_DEPTH:-24}"
 readonly VNC_PASSWORD="${VNC_PASSWORD:-apple}"
 readonly HOST_MOUNTS_FILE="${HOST_MOUNTS_FILE:-}"
 readonly MIN_MACOS_MAJOR="${MIN_MACOS_MAJOR:-26}"
-NOVNC_HOST="$([[ "${HOST_IP}" == 0.0.0.0 ]] && printf localhost || printf %s "${HOST_IP}")"
+if [[ "${HOST_IP}" == '0.0.0.0' ]]; then
+  NOVNC_HOST='localhost'
+else
+  NOVNC_HOST="${HOST_IP}"
+fi
 readonly NOVNC_HOST
 readonly NOVNC_URL="http://${NOVNC_HOST}:${PORT}/vnc.html"
 
+# These are built from CLI_VOLUMES and HOST_MOUNTS_FILE immediately before a
+# container is started. Keeping them at script scope avoids relying on Bash's
+# dynamic local-variable scoping between load_mounts and up.
+declare -a volumes=()
+mount_count=0
+mount_targets=''
+
 container_running() {
-  container list --quiet 2>/dev/null | grep -Fx "${NAME}" >/dev/null
+  container list --quiet 2> /dev/null | grep -Fx "${NAME}" > /dev/null
 }
 
 container_exists() {
-  container list --all --quiet 2>/dev/null | grep -Fx "${NAME}" >/dev/null
+  container list --all --quiet 2> /dev/null | grep -Fx "${NAME}" > /dev/null
 }
 
 image_exists() {
-  container image list --quiet 2>/dev/null | grep -Fx "${IMAGE}" >/dev/null
+  container image list --quiet 2> /dev/null | grep -Fx "${IMAGE}" > /dev/null
 }
 
 check() {
   local arch os version major
 
-  arch="$(uname -m 2>/dev/null || printf unknown)"
+  arch="$(uname -m 2> /dev/null || printf unknown)"
   case "${arch}" in
     arm64|aarch64) ;;
     *) printf 'ERROR: Apple silicon (arm64) is required; detected %s.\n' "${arch}" >&2; return 1 ;;
   esac
 
-  os="$(uname -s 2>/dev/null || printf unknown)"
+  os="$(uname -s 2> /dev/null || printf unknown)"
   if [[ "${os}" != Darwin ]]; then
     printf 'ERROR: macOS is required; detected %s.\n' "${os}" >&2
     return 1
   fi
 
-  if command -v sw_vers >/dev/null 2>&1; then
-    version="$(sw_vers -productVersion 2>/dev/null || printf unknown)"
+  if command -v sw_vers > /dev/null 2>&1; then
+    version="$(sw_vers -productVersion 2> /dev/null || printf unknown)"
     major="${version%%.*}"
     case "${major}" in
       ''|*[!0-9]*) printf 'WARNING: could not determine macOS version; continuing.\n' >&2 ;;
@@ -60,7 +71,7 @@ check() {
     printf 'WARNING: sw_vers is unavailable; continuing without macOS version validation.\n' >&2
   fi
 
-  command -v container >/dev/null 2>&1 || {
+  command -v container > /dev/null 2>&1 || {
     printf "ERROR: Apple 'container' CLI was not found in PATH.\n" >&2
     return 1
   }
@@ -71,7 +82,7 @@ append_mounts() {
 
   while IFS= read -r spec || [[ -n "${spec}" ]]; do
     case "${spec}" in ''|\#*) continue ;; esac
-    IFS=: read -r host target mode extra <<<"${spec}"
+    IFS=: read -r host target mode extra <<< "${spec}"
     if [[ -n "${extra:-}" || "${spec}" == *: || -z "${host}" || -z "${target}" ]]; then
       printf "ERROR: invalid mount '%s' (expected HOST:CONTAINER[:ro|rw]).\n" "${spec}" >&2
       return 2
@@ -95,16 +106,16 @@ append_mounts() {
 load_mounts() {
   volumes=()
   mount_count=0
-  mount_targets=
+  mount_targets=''
   if [[ -n "${CLI_VOLUMES:-}" ]]; then
-    append_mounts <<<"${CLI_VOLUMES}"
+    append_mounts <<< "${CLI_VOLUMES}"
   fi
   if [[ -n "${HOST_MOUNTS_FILE}" ]]; then
     [[ -f "${HOST_MOUNTS_FILE}" ]] || {
       printf "ERROR: HOST_MOUNTS_FILE is set to '%s' but that file does not exist.\n" "${HOST_MOUNTS_FILE}" >&2
       return 1
     }
-    append_mounts <"${HOST_MOUNTS_FILE}"
+    append_mounts < "${HOST_MOUNTS_FILE}"
   fi
 }
 
@@ -114,15 +125,14 @@ build() {
 }
 
 up() {
-  local -a volumes container_args
-  local mount_count mount_targets
+  local -a container_args
 
   check
   load_mounts
   if [[ "${VNC_PASSWORD}" == apple ]]; then
     printf 'WARNING: VNC_PASSWORD is still set to the default value.\n' >&2
   fi
-  container system status >/dev/null 2>&1 || container system start
+  container system status > /dev/null 2>&1 || container system start
   if container_running; then
     printf "Container '%s' is already running.\n" "${NAME}"
     if (( mount_count )); then
@@ -134,7 +144,7 @@ up() {
   image_exists || build
   if container_exists; then
     printf "Removing stale container '%s'...\n" "${NAME}"
-    container delete "${NAME}" >/dev/null 2>&1 || true
+    container delete "${NAME}" > /dev/null
   fi
   printf "Starting container '%s'...\n" "${NAME}"
   container_args=(
@@ -148,7 +158,7 @@ up() {
     --env "VNC_PASSWORD=${VNC_PASSWORD}"
     --env "MOUNT_TARGETS=${mount_targets}"
   )
-  container run "${container_args[@]}" "${volumes[@]}" "${IMAGE}" >/dev/null
+  container run "${container_args[@]}" "${volumes[@]}" "${IMAGE}" > /dev/null
   printf "Container '%s' started.\n" "${NAME}"
   printf 'noVNC:  %s\n' "${NOVNC_URL}"
 }
@@ -156,7 +166,7 @@ up() {
 down() {
   if container_running; then
     printf "Stopping container '%s'...\n" "${NAME}"
-    container stop "${NAME}" >/dev/null 2>&1 || true
+    container stop "${NAME}" > /dev/null 2>&1 || true
   else
     printf "Container '%s' is not running.\n" "${NAME}"
   fi
@@ -176,15 +186,15 @@ status() {
 }
 
 clean() {
-  if container_running; then container stop "${NAME}" >/dev/null 2>&1 || true; fi
-  if container_exists; then container delete "${NAME}" >/dev/null 2>&1 || true; fi
-  if image_exists; then container image delete "${IMAGE}" >/dev/null 2>&1 || true; fi
+  if container_running; then container stop "${NAME}" > /dev/null; fi
+  if container_exists; then container delete "${NAME}" > /dev/null; fi
+  if image_exists; then container image delete "${IMAGE}" > /dev/null; fi
   printf 'Image clean complete.\n'
 }
 
 shell() {
   check
-  container system status >/dev/null 2>&1 || container system start
+  container system status > /dev/null 2>&1 || container system start
   if container_running; then
     exec container exec --interactive --tty "${NAME}" /bin/bash
   fi
@@ -196,7 +206,7 @@ shell() {
 }
 
 help() {
-  cat <<'EOF'
+  cat << EOF
 Usage: make <target> [VARIABLE=value ...]
 
 Targets:
@@ -217,8 +227,18 @@ Configuration is read from .env when present, with Makefile defaults otherwise.
 EOF
 }
 
-command="${1:-help}"
-case "${command}" in
-  help|check|build|up|down|status|clean|shell) "${command}" ;;
-  *) printf 'ERROR: unknown command: %s\n' "${command}" >&2; exit 2 ;;
-esac
+main() {
+  local command="${1:-help}"
+
+  if (( $# > 1 )); then
+    printf 'ERROR: expected one command, got %s.\n' "$#" >&2
+    return 2
+  fi
+
+  case "${command}" in
+    help|check|build|up|down|status|clean|shell) "${command}" ;;
+    *) printf 'ERROR: unknown command: %s\n' "${command}" >&2; return 2 ;;
+  esac
+}
+
+main "$@"
