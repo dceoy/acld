@@ -73,6 +73,8 @@ cp .env.example .env
 
 `.env` is loaded automatically by the `Makefile` (and is git-ignored). Any variable not set in `.env` falls back to the default shown below, which matches `.env.example`.
 
+The image runs as the non-root user `agent` with UID and GID `1001`; its home directory is `/home/agent`.
+
 | Variable           | Default       | Description                                                                                                            |
 | ------------------ | ------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `IMAGE`            | `acld:latest` | Local OCI image name                                                                                                   |
@@ -99,16 +101,16 @@ No host paths are mounted by default. Mounting is opt-in, two ways:
 **Ad hoc, one-off mount** with `CLI_VOLUMES`:
 
 ```sh
-CLI_VOLUMES="$HOME/Desktop:/home/desktop/Desktop" make up
-make down && CLI_VOLUMES="$HOME/Downloads:/home/desktop/Downloads:ro" make up
+CLI_VOLUMES="$HOME/Desktop:/home/agent/Desktop" make up
+make down && CLI_VOLUMES="$HOME/Downloads:/home/agent/Downloads:ro" make up
 ```
 
 For multiple persistent mounts, create a local mounts file and point `.env` at it. The expected format is documented in `.env.example`.
 
 ```sh
 cat >.mounts <<'EOF'
-/Users/you/Desktop:/home/desktop/Desktop:rw
-/Users/you/Downloads:/home/desktop/Downloads:ro
+/Users/you/Desktop:/home/agent/Desktop:rw
+/Users/you/Downloads:/home/agent/Downloads:ro
 EOF
 echo 'HOST_MOUNTS_FILE=.mounts' >>.env
 ```
@@ -119,7 +121,7 @@ Notes:
 - Mode defaults to `rw` if omitted; use `:ro` for read-only access.
 - `make up` validates every mount spec before starting a new container. If the desktop is already running, requested mounts are not applied to the live container; run `make down && make up` to recreate it.
 - Mounting a path as `rw` prints a warning -- prefer `:ro` unless the desktop actually needs to write there.
-- The container-side path is created automatically by the entrypoint on a best-effort basis (`mkdir -p`). If it lives somewhere the non-root container user can't create (e.g. directly under `/`), pre-create it in a custom image or mount under `/home/desktop` instead.
+- The container-side path is created automatically by the entrypoint on a best-effort basis (`mkdir -p`). If it lives somewhere the non-root container user can't create (e.g. directly under `/`), pre-create it in a custom image or mount under `/home/agent` instead.
 
 ## Shell access
 
