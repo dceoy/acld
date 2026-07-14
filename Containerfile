@@ -1,5 +1,6 @@
 FROM ubuntu:26.04
 
+ARG DEBIAN_FRONTEND=noninteractive
 ARG USERNAME=agent
 ARG USER_UID=1001
 ARG USER_GID=1001
@@ -11,7 +12,6 @@ LABEL \
   org.opencontainers.image.licenses="MIT"
 
 ENV \
-  DEBIAN_FRONTEND=noninteractive \
   DISPLAY=:1 \
   VNC_GEOMETRY=1440x900 \
   VNC_DEPTH=24 \
