@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+
 set -euo pipefail
 
 # Create requested bind-mount target directories on a best-effort basis.
@@ -13,12 +14,15 @@ if [[ -n "${MOUNT_TARGETS:-}" ]]; then
   done
 fi
 
+# TigerVNC migrates the legacy ~/.vnc directory to ~/.config/tigervnc on
+# first start.  Its migration cannot create ~/.config itself.
+install -d -m 700 "${HOME}/.config"
 install -d -m 700 "${HOME}/.vnc"
 
-printf '%s\n' "${VNC_PASSWORD}" | vncpasswd -f >"${HOME}/.vnc/passwd"
+printf '%s\n' "${VNC_PASSWORD}" | vncpasswd -f > "${HOME}/.vnc/passwd"
 chmod 600 "${HOME}/.vnc/passwd"
 
-cat >"${HOME}/.vnc/xstartup" <<'EOF'
+cat > "${HOME}/.vnc/xstartup" << EOF
 #!/usr/bin/env bash
 unset SESSION_MANAGER
 unset DBUS_SESSION_BUS_ADDRESS
