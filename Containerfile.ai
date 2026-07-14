@@ -36,7 +36,7 @@ RUN \
       curl -fsSL -o /usr/share/keyrings/claude-desktop-archive-keyring.asc \
         https://downloads.claude.ai/claude-desktop/key.asc \
       && echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/claude-desktop-archive-keyring.asc] https://downloads.claude.ai/claude-desktop/apt/stable stable main" \
-        | tee /etc/apt/sources.list.d/claude-desktop.lista \
+        | tee /etc/apt/sources.list.d/claude-desktop.list \
       && apt-get -yqq update \
       && apt-get -yqq install --no-install-recommends --no-install-suggests claude-desktop \
       && apt-get -yqq autoremove --purge \
@@ -52,7 +52,7 @@ COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint
 USER "${USER_NAME}"
 WORKDIR "/home/${USER_NAME}"
 
-EXPOSE "${NOVNC_PORT}"
+EXPOSE ${NOVNC_PORT}
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD ["bash", "-c", "< /dev/tcp/127.0.0.1/${NOVNC_PORT}"]
