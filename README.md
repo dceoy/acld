@@ -24,9 +24,10 @@ This repository intentionally keeps the implementation small:
 
 - one `Containerfile`
 - one container runtime entrypoint (`entrypoint.sh`)
-- one `Makefile` that wraps Apple `container` operations
+- one host-side shell script (`acld.sh`) that wraps Apple `container` operations
+- one small `Makefile` that loads configuration and dispatches to `acld.sh`
 - opt-in host bind mounts only when explicitly configured
-- no host-side shell wrapper scripts, GUI wrapper, Docker Compose compatibility layer, or Swift application
+- no GUI wrapper, Docker Compose compatibility layer, or Swift application
 
 ## Quick start
 
@@ -53,15 +54,15 @@ Run `make up` again at any time: it is safe to re-run and will not create a seco
 make <target> [VARIABLE=value ...]
 ```
 
-| Target        | Description                                                                                                             |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `up`          | Start the desktop. Safe to run repeatedly.                                                                              |
-| `down`        | Stop the running desktop container. Safe if it is already stopped.                                                      |
-| `status`      | Print whether the desktop is running and the noVNC URL. Exits non-zero when not running.                                |
-| `shell`       | Open an interactive shell. Uses the running container if there is one, otherwise starts a temporary one from the image. |
-| `build`       | Build the container image.                                                                                              |
-| `clean-image` | Stop and remove the container, then remove the built image.                                                             |
-| `help`        | Show usage.                                                                                                             |
+| Target   | Description                                                                                                             |
+| -------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `up`     | Start the desktop. Safe to run repeatedly.                                                                              |
+| `down`   | Stop the running desktop container. Safe if it is already stopped.                                                      |
+| `status` | Print whether the desktop is running and the noVNC URL. Exits non-zero when not running.                                |
+| `shell`  | Open an interactive shell. Uses the running container if there is one, otherwise starts a temporary one from the image. |
+| `build`  | Build the container image.                                                                                              |
+| `clean`  | Stop and remove the container, then remove the built image.                                                             |
+| `help`   | Show usage.                                                                                                             |
 
 ## Configuration
 
@@ -135,10 +136,10 @@ If the desktop container is already running, this opens a shell inside it. Other
 
 ```sh
 make down          # stop and remove the auto-removed desktop container
-make clean-image   # also remove the built image
+make clean         # also remove the built image
 ```
 
-`make down` is safe when the container is already stopped or absent. `make clean-image` removes any stale container before deleting the image.
+`make down` is safe when the container is already stopped or absent. `make clean` removes any stale container before deleting the image.
 
 ## Security
 
