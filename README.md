@@ -24,9 +24,10 @@ This repository intentionally keeps the implementation small:
 
 - one `Containerfile`
 - one container runtime entrypoint (`entrypoint.sh`)
-- one `Makefile` that wraps Apple `container` operations
+- one host-side shell script (`acld.sh`) that wraps Apple `container` operations
+- one small `Makefile` that loads configuration and dispatches to `acld.sh`
 - opt-in host bind mounts only when explicitly configured
-- no host-side shell wrapper scripts, GUI wrapper, Docker Compose compatibility layer, or Swift application
+- no GUI wrapper, Docker Compose compatibility layer, or Swift application
 
 ## Quick start
 
