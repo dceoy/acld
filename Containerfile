@@ -35,8 +35,19 @@ RUN \
       && rm -rf /var/lib/apt/lists/*
 
 RUN \
-      groupadd --gid "${USER_GID}" "${USER_NAME}" \
-      && useradd --uid "${USER_UID}" --gid "${USER_GID}" --shell /bin/bash --create-home "${USER_NAME}"
+      user_home="/home/${USER_NAME}"; \
+      if ! getent group "${USER_GID}" > /dev/null; then \
+        groupadd --gid "${USER_GID}" "${USER_NAME}"; \
+      fi; \
+      existing_user="$(getent passwd "${USER_UID}" | cut -d: -f1 || true)"; \
+      if [[ -n "${existing_user}" ]]; then \
+        if [[ "${existing_user}" != "${USER_NAME}" ]]; then \
+          usermod --login "${USER_NAME}" --home "${user_home}" --move-home "${existing_user}"; \
+        fi; \
+        usermod --gid "${USER_GID}" --shell /bin/bash "${USER_NAME}"; \
+      else \
+        useradd --uid "${USER_UID}" --gid "${USER_GID}" --create-home --shell /bin/bash "${USER_NAME}"; \
+      fi
 
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint
 

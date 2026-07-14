@@ -21,13 +21,13 @@ create_mount_targets() {
 write_xstartup() {
   local xstartup_path="${HOME}/.vnc/xstartup"
 
-  umask 077
-  cat > "${xstartup_path}" << EOF
+  (umask 077 && cat > "${xstartup_path}" << EOF
 #!/usr/bin/env bash
 unset SESSION_MANAGER
 unset DBUS_SESSION_BUS_ADDRESS
 exec startxfce4
 EOF
+  )
   chmod +x "${xstartup_path}"
 }
 
