@@ -35,10 +35,15 @@ RUN \
       && gpg --batch --show-keys --with-colons /usr/share/keyrings/claude-desktop-archive-keyring.asc \
         | awk -F: -v expected='31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE' \
           '$1 == "pub" { public_keys++ } $1 == "fpr" && !fingerprint { fingerprint = $10 } END { exit !(public_keys == 1 && fingerprint == expected) }' \
+      && curl -fsSL -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+        https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
       && echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/claude-desktop-archive-keyring.asc] https://downloads.claude.ai/claude-desktop/apt/stable stable main" \
         | tee /etc/apt/sources.list.d/claude-desktop.list \
+      && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        | tee /etc/apt/sources.list.d/github-cli.list \
       && apt-get -yqq update \
-      && apt-get -yqq install --no-install-recommends --no-install-suggests claude-desktop \
+      && apt-get -yqq install --no-install-recommends --no-install-suggests claude-desktop gh \
       && apt-get -yqq autoremove --purge \
       && apt-get -yqq clean \
       && rm -rf /var/lib/apt/lists/*
