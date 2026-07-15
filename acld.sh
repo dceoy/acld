@@ -6,8 +6,10 @@ if [[ "${#}" -gt 0 && "${1}" == '--debug' ]]; then
   set -x && shift
 fi
 
-readonly IMAGE="${IMAGE:-acld:latest}"
-readonly NAME="${NAME:-acld}"
+readonly VARIANT="${VARIANT:-ai}"
+readonly CONTAINERFILE="${CONTAINERFILE:-Containerfile.${VARIANT}}"
+readonly IMAGE="${IMAGE:-acld:${VARIANT}}"
+readonly NAME="${NAME:-acld-${VARIANT}}"
 readonly HOST_IP="${HOST_IP:-127.0.0.1}"
 readonly PORT="${PORT:-6080}"
 readonly CPUS="${CPUS:-4}"
@@ -87,6 +89,29 @@ check() {
   }
 }
 
+variants() {
+  local file found=0
+
+  printf 'Available variants:\n'
+  for file in Containerfile.*; do
+    [[ -f "${file}" ]] || continue
+    printf '  %s\n' "${file#Containerfile.}"
+    found=1
+  done
+  if (( ! found )); then
+    printf '  (none)\n'
+    return 1
+  fi
+}
+
+validate_containerfile() {
+  [[ -f "${CONTAINERFILE}" ]] && return
+
+  printf "ERROR: container definition '%s' for variant '%s' does not exist.\n" "${CONTAINERFILE}" "${VARIANT}" >&2
+  variants >&2 || true
+  return 2
+}
+
 append_mounts() {
   local spec host target mode extra
 
@@ -138,8 +163,9 @@ load_mounts() {
 }
 
 build() {
+  validate_containerfile
   check
-  container build --platform linux/arm64 --tag "${IMAGE}" .
+  container build --platform linux/arm64 --file "${CONTAINERFILE}" --tag "${IMAGE}" .
 }
 
 up() {
@@ -234,16 +260,21 @@ help() {
 Usage: make <target> [VARIABLE=value ...]
 
 Targets:
-  up           Start the desktop; safe to run repeatedly
-  down         Stop the running desktop container
-  status       Show whether the desktop is running
-  shell        Open a shell in the running container, or a temporary one
-  build        Build the container image
-  clean        Stop and remove the container and built image
+  up           Start the selected desktop; safe to run repeatedly
+  down         Stop the selected desktop container
+  status       Show whether the selected desktop is running
+  shell        Open a shell in the selected container, or a temporary one
+  build        Build the selected container image
+  clean        Stop and remove the selected container and built image
+  variants     List available image variants
   help         Show this help message
 
 Common variables:
-  IMAGE, NAME, HOST_IP, PORT, CPUS, MEMORY, VNC_GEOMETRY, VNC_DEPTH, VNC_PASSWORD
+  VARIANT=ai|base
+  CONTAINERFILE=Containerfile.\${VARIANT}
+  IMAGE=acld:\${VARIANT}
+  NAME=acld-\${VARIANT}
+  HOST_IP, PORT, CPUS, MEMORY, VNC_GEOMETRY, VNC_DEPTH, VNC_PASSWORD
   HOST_MOUNTS_FILE=.mounts
   CLI_VOLUMES="HOST:CONTAINER[:ro|rw]"
 
@@ -260,7 +291,7 @@ main() {
   fi
 
   case "${command}" in
-    help|check|build|up|down|status|clean|shell )
+    help|check|variants|build|up|down|status|clean|shell )
       "${command}"
       ;;
     * )
