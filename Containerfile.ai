@@ -8,6 +8,7 @@ ARG VNC_PASSWORD='apple'
 ARG VNC_GEOMETRY='1440x900'
 ARG VNC_DEPTH='24'
 ARG NOVNC_PORT='6080'
+ARG CLAUDE_DESKTOP_KEY_FINGERPRINT='31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE'
 
 LABEL \
   org.opencontainers.image.title="acld" \
@@ -33,7 +34,7 @@ RUN \
       && curl -fsSL -o /usr/share/keyrings/claude-desktop-archive-keyring.asc \
         https://downloads.claude.ai/claude-desktop/key.asc \
       && gpg --batch --show-keys --with-colons /usr/share/keyrings/claude-desktop-archive-keyring.asc \
-        | awk -F: -v expected='31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE' \
+        | awk -F: -v expected="${CLAUDE_DESKTOP_KEY_FINGERPRINT}" \
           '$1 == "pub" { public_keys++ } $1 == "fpr" && !fingerprint { fingerprint = $10 } END { exit !(public_keys == 1 && fingerprint == expected) }' \
       && curl -fsSL -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
         https://cli.github.com/packages/githubcli-archive-keyring.gpg \
