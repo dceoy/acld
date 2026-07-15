@@ -23,8 +23,7 @@ macOS browser
 This repository intentionally keeps the implementation small:
 
 - two image definitions: `Containerfile.ai` adds Claude Desktop to the minimal
-  desktop in `Containerfile.base`; the default `Containerfile` symlink selects
-  the AI image for direct `container build .` usage
+  desktop in `Containerfile.base`
 - one container runtime entrypoint (`entrypoint.sh`)
 - one host-side shell script (`acld.sh`) that wraps Apple `container` operations
 - one small `Makefile` that loads configuration and dispatches to `acld.sh`
@@ -95,7 +94,7 @@ make up VARIANT=ai
 make up VARIANT=base PORT=6081
 ```
 
-`CONTAINERFILE`, `IMAGE`, and `NAME` remain independently overridable for custom images. The default `Containerfile` symlink is only the fallback for direct `container build .` usage; the Make workflow always passes the selected Containerfile explicitly.
+`CONTAINERFILE`, `IMAGE`, and `NAME` remain independently overridable for custom images. The Make workflow always passes the selected Containerfile explicitly; direct `container build` commands must also specify `--file`.
 
 ## Make targets
 
