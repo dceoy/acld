@@ -10,6 +10,7 @@ readonly VARIANT="${VARIANT:-ai}"
 readonly CONTAINERFILE="${CONTAINERFILE:-Containerfile.${VARIANT}}"
 readonly IMAGE="${IMAGE:-acld:${VARIANT}}"
 readonly NAME="${NAME:-acld-${VARIANT}}"
+readonly LEGACY_NAME='acld'
 readonly HOST_IP="${HOST_IP:-127.0.0.1}"
 readonly PORT="${PORT:-6080}"
 readonly CPUS="${CPUS:-4}"
@@ -40,6 +41,11 @@ container_running() {
 
 container_exists() {
   container list --all --quiet 2> /dev/null | grep -Fx "${NAME}" > /dev/null
+}
+
+legacy_container_running() {
+  [[ "${VARIANT}" == ai && "${NAME}" == acld-ai && "${HOST_IP}" == 127.0.0.1 && "${PORT}" == 6080 ]] || return 1
+  container list --quiet 2> /dev/null | grep -Fx "${LEGACY_NAME}" > /dev/null
 }
 
 image_exists() {
@@ -184,6 +190,11 @@ up() {
     fi
     printf 'noVNC:  %s\n' "${NOVNC_URL}"
     return
+  fi
+  if legacy_container_running; then
+    printf "ERROR: legacy container '%s' is still running on the default noVNC endpoint.\n" "${LEGACY_NAME}" >&2
+    printf "Stop it with 'make down NAME=%s', then run 'make up' again.\n" "${LEGACY_NAME}" >&2
+    return 1
   fi
   image_exists || build
   if container_exists; then
