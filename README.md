@@ -140,7 +140,7 @@ The image runs as the non-root user `agent` with UID and GID `1001`; its home di
 | `VARIANT`          | `ai`                                   | Image variant; selects the derived Containerfile, image tag, and container name                                        |
 | `CONTAINERFILE`    | `Containerfile.${VARIANT}`             | Container build definition; normally derived from `VARIANT`                                                            |
 | `IMAGE`            | `acld:${VARIANT}`                      | Local OCI image name; normally derived from `VARIANT`                                                                  |
-| `REMOTE_IMAGE`     | `ghcr.io/dceoy/acld/${VARIANT}:latest` | Registry image reference used by `make pull`; normally derived from `VARIANT`                                          |
+| `REMOTE_IMAGE`     | `ghcr.io/dceoy/acld-${VARIANT}:latest` | Registry image reference used by `make pull`; normally derived from `VARIANT`                                          |
 | `NAME`             | `acld-${VARIANT}`                      | Container name; normally derived from `VARIANT`                                                                        |
 | `HOST_IP`          | `127.0.0.1`                            | Host bind address                                                                                                      |
 | `PORT`             | `6080`                                 | noVNC host port                                                                                                        |
