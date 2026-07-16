@@ -4,16 +4,11 @@ set -euo pipefail
 
 : "${VNC_PASSWORD:?VNC_PASSWORD must be set}"
 
-# Create requested bind-mount target directories on a best-effort basis.
-# Paths outside what this non-root user can create must already exist.
-if [[ -n "${MOUNT_TARGETS:-}" ]]; then
-  IFS=':' read -r -a mount_targets <<< "${MOUNT_TARGETS}"
-  for mount_target in "${mount_targets[@]}"; do
-    [[ -z "${mount_target}" ]] && continue
-    if ! mkdir -p "${mount_target}" 2> /dev/null; then
-      printf 'WARNING: could not create mount target %s -- ensure it already exists and is writable\n' "${mount_target}" >&2
-    fi
-  done
+# The persistent home volume is empty on its first mount; seed it once from
+# the image's default skeleton home. A later start finds it already
+# populated and leaves it untouched.
+if [[ -d /opt/home-skel && -z "$(ls -A "${HOME}" 2> /dev/null)" ]]; then
+  cp -a /opt/home-skel/. "${HOME}/"
 fi
 
 # TigerVNC migrates the legacy ~/.vnc directory to ~/.config/tigervnc on

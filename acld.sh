@@ -19,7 +19,10 @@ readonly MEMORY="${MEMORY:-4G}"
 readonly VNC_GEOMETRY="${VNC_GEOMETRY:-1440x900}"
 readonly VNC_DEPTH="${VNC_DEPTH:-24}"
 readonly VNC_PASSWORD="${VNC_PASSWORD:-apple}"
-readonly HOST_MOUNTS_FILE="${HOST_MOUNTS_FILE:-}"
+readonly CONTAINER_HOME='/home/agent'
+readonly HOME_VOLUME="${HOME_VOLUME:-${NAME}-home}"
+readonly CONTAINER_WORKSPACE='/workspace'
+readonly WORKSPACE_DIR="${WORKSPACE_DIR:-$(pwd)}"
 readonly MIN_MACOS_MAJOR="${MIN_MACOS_MAJOR:-26}"
 if [[ "${HOST_IP}" == '0.0.0.0' ]]; then
   NOVNC_HOST='localhost'
@@ -28,13 +31,6 @@ else
 fi
 readonly NOVNC_HOST
 readonly NOVNC_URL="http://${NOVNC_HOST}:${PORT}/vnc.html"
-
-# These are built from CLI_VOLUMES and HOST_MOUNTS_FILE immediately before a
-# container is started. Keeping them at script scope avoids relying on Bash's
-# dynamic local-variable scoping between load_mounts and up.
-declare -a volumes=()
-mount_count=0
-mount_targets=''
 
 container_running() {
   container list --quiet 2> /dev/null | grep -Fx "${NAME}" > /dev/null
@@ -131,54 +127,11 @@ validate_containerfile() {
   return 2
 }
 
-append_mounts() {
-  local spec host target mode extra
-
-  while IFS= read -r spec || [[ -n "${spec}" ]]; do
-    case "${spec}" in
-      ''|\#* )
-        continue
-        ;;
-    esac
-    IFS=: read -r host target mode extra <<< "${spec}"
-    if [[ -n "${extra:-}" || "${spec}" == *: || -z "${host}" || -z "${target}" ]]; then
-      printf "ERROR: invalid mount '%s' (expected HOST:CONTAINER[:ro|rw]).\n" "${spec}" >&2
-      return 2
-    fi
-    mode="${mode:-rw}"
-    case "${mode}" in
-      ro|rw )
-        ;;
-      * )
-        printf "ERROR: invalid mount mode '%s' in '%s'.\n" "${mode}" "${spec}" >&2
-        return 2
-        ;;
-    esac
-    [[ -e "${host}" ]] || { printf "ERROR: host mount path does not exist: '%s'.\n" "${host}" >&2; return 1; }
-    [[ "${target}" == /* ]] || { printf "ERROR: container mount path must be absolute: '%s'.\n" "${target}" >&2; return 2; }
-    if [[ "${mode}" == rw ]]; then
-      printf "WARNING: mounting '%s' as writable at '%s'. Prefer ':ro' unless write access is required.\n" "${host}" "${target}" >&2
-    fi
-    volumes+=(--volume "${host}:${target}:${mode}")
-    ((mount_count += 1))
-    mount_targets="${mount_targets:+${mount_targets}:}${target}"
-  done
-}
-
-load_mounts() {
-  volumes=()
-  mount_count=0
-  mount_targets=''
-  if [[ -n "${CLI_VOLUMES:-}" ]]; then
-    append_mounts <<< "${CLI_VOLUMES}"
-  fi
-  if [[ -n "${HOST_MOUNTS_FILE}" ]]; then
-    [[ -f "${HOST_MOUNTS_FILE}" ]] || {
-      printf "ERROR: HOST_MOUNTS_FILE is set to '%s' but that file does not exist.\n" "${HOST_MOUNTS_FILE}" >&2
-      return 1
-    }
-    append_mounts < "${HOST_MOUNTS_FILE}"
-  fi
+validate_workspace_dir() {
+  [[ -d "${WORKSPACE_DIR}" ]] || {
+    printf "ERROR: WORKSPACE_DIR does not exist or is not a directory: '%s'.\n" "${WORKSPACE_DIR}" >&2
+    return 2
+  }
 }
 
 build() {
@@ -201,16 +154,13 @@ up() {
   local -a container_args
 
   check
-  load_mounts
+  validate_workspace_dir
   if [[ "${VNC_PASSWORD}" == apple ]]; then
     printf 'WARNING: VNC_PASSWORD is still set to the default value.\n' >&2
   fi
   container system status > /dev/null 2>&1 || container system start
   if container_running; then
     printf "Container '%s' is already running.\n" "${NAME}"
-    if (( mount_count )); then
-      printf "WARNING: requested mounts are not applied to an already-running container; run 'make down && make up' to recreate it.\n" >&2
-    fi
     printf 'noVNC:  %s\n' "${NOVNC_URL}"
     return
   fi
@@ -240,9 +190,10 @@ up() {
     --env "VNC_GEOMETRY=${VNC_GEOMETRY}"
     --env "VNC_DEPTH=${VNC_DEPTH}"
     --env "VNC_PASSWORD=${VNC_PASSWORD}"
-    --env "MOUNT_TARGETS=${mount_targets}"
+    --volume "${HOME_VOLUME}:${CONTAINER_HOME}"
+    --volume "${WORKSPACE_DIR}:${CONTAINER_WORKSPACE}"
   )
-  container run "${container_args[@]}" "${volumes[@]}" "${IMAGE}" > /dev/null
+  container run "${container_args[@]}" "${IMAGE}" > /dev/null
   printf "Container '%s' started.\n" "${NAME}"
   printf 'noVNC:  %s\n' "${NOVNC_URL}"
 }
@@ -287,6 +238,7 @@ clean() {
 
 shell() {
   check
+  validate_workspace_dir
   container system status > /dev/null 2>&1 || container system start
   if container_running; then
     exec container exec --interactive --tty "${NAME}" /bin/bash
@@ -295,7 +247,10 @@ shell() {
     printf "ERROR: image '%s' not found. Run 'make pull' or 'make build' first.\n" "${IMAGE}" >&2
     return 1
   fi
-  exec container run --rm --interactive --tty --entrypoint /bin/bash "${IMAGE}"
+  exec container run --rm --interactive --tty --entrypoint /bin/bash \
+    --volume "${HOME_VOLUME}:${CONTAINER_HOME}" \
+    --volume "${WORKSPACE_DIR}:${CONTAINER_WORKSPACE}" \
+    "${IMAGE}"
 }
 
 help() {
@@ -320,8 +275,8 @@ Common variables:
   REMOTE_IMAGE=ghcr.io/dceoy/acld-\${VARIANT}:latest
   NAME=acld-\${VARIANT}
   HOST_IP, PORT, CPUS, MEMORY, VNC_GEOMETRY, VNC_DEPTH, VNC_PASSWORD
-  HOST_MOUNTS_FILE=.mounts
-  CLI_VOLUMES="HOST:CONTAINER[:ro|rw]"
+  HOME_VOLUME=\${NAME}-home
+  WORKSPACE_DIR=<current directory>
 
 Configuration is read from .env when present, with Makefile defaults otherwise.
 EOF
