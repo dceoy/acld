@@ -253,12 +253,10 @@ shell() {
     printf "ERROR: image '%s' not found. Run 'make pull' or 'make build' first.\n" "${IMAGE}" >&2
     return 1
   fi
-  # The image entrypoint initializes the persistent home volume and runs
-  # the given command as root.
   exec container run --rm --interactive --tty \
     --volume "${HOME_VOLUME}:/root" \
     --volume "${WORKSPACE_DIR}:${CONTAINER_WORKSPACE}" \
-    "${IMAGE}" /bin/bash
+    "${IMAGE}" /bin/bash --login
 }
 
 help() {
@@ -293,8 +291,8 @@ EOF
 main() {
   local command="${1:-help}"
 
-  if (( $# > 1 )); then
-    printf 'ERROR: expected one command, got %s.\n' "$#" >&2
+  if (( ${#} > 1 )); then
+    printf 'ERROR: expected one command, got %s.\n' "${#}" >&2
     return 2
   fi
 
@@ -309,4 +307,4 @@ main() {
   esac
 }
 
-main "$@"
+main "${@}"

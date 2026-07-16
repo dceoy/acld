@@ -6,8 +6,8 @@ readonly WORKSPACE_DIR='/workspace'
 
 export HOME='/root'
 
-# Seed the persistent home once from the image's default skeleton home. A
-# later start finds it already populated and leaves it untouched.
+# Seed the persistent home once from the image's default skeleton home.
+# A later start finds it already populated and leaves it untouched.
 if [[ -d /opt/home-skel && -z "$(ls -A "${HOME}" 2> /dev/null)" ]]; then
   cp -a /opt/home-skel/. "${HOME}/"
 fi
@@ -19,16 +19,11 @@ if [[ -d "${WORKSPACE_DIR}" ]] && [[ ! -w "${WORKSPACE_DIR}" ]]; then
 fi
 
 # With arguments (for example `make shell`), run them instead of the desktop.
-if (( $# > 0 )); then
-  exec "$@"
+if (( ${#} > 0 )); then
+  exec "${@}"
 fi
 
 : "${VNC_PASSWORD:?VNC_PASSWORD must be set}"
-
-# TigerVNC migrates the legacy ~/.vnc directory to ~/.config/tigervnc on
-# first start.  Its migration cannot create ~/.config itself.
-install -d -m 700 "${HOME}/.config"
-install -d -m 700 "${HOME}/.vnc"
 
 printf '%s\n' "${VNC_PASSWORD}" | vncpasswd -f > "${HOME}/.vnc/passwd"
 chmod 600 "${HOME}/.vnc/passwd"

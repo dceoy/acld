@@ -20,8 +20,6 @@ ENV \
 
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 
-# Cache mounts keep downloaded packages and index lists out of the image
-# layers while letting subsequent builds reuse them.
 # hadolint ignore=DL3008,DL3009
 RUN \
       --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -44,8 +42,6 @@ RUN \
 
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint
 
-# The container runs entirely as root; the entrypoint seeds the persistent
-# home volume from the image's skeleton home on first start.
 # hadolint ignore=DL3002
 USER root   # trivy:ignore:AVD-DS-0002
 WORKDIR /workspace
