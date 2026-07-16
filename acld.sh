@@ -57,6 +57,10 @@ remote_image_exists() {
   container image list --quiet 2> /dev/null | grep -Fx "${REMOTE_IMAGE}" > /dev/null
 }
 
+using_default_containerfile_and_image() {
+  [[ "${CONTAINERFILE}" == "Containerfile.${VARIANT}" && "${IMAGE}" == "acld:${VARIANT}" ]]
+}
+
 check() {
   local arch os version major
 
@@ -211,7 +215,13 @@ up() {
     printf "Stop it with 'make down NAME=%s', then run 'make up' again.\n" "${LEGACY_NAME}" >&2
     return 1
   fi
-  image_exists || pull
+  if ! image_exists; then
+    if using_default_containerfile_and_image; then
+      pull
+    else
+      build
+    fi
+  fi
   if container_exists; then
     printf "Removing stale container '%s'...\n" "${NAME}"
     container delete "${NAME}" > /dev/null

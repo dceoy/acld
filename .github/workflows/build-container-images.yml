@@ -39,7 +39,7 @@ jobs:
       image-name: ${{ github.repository }}/${{ matrix.variant }}
       file: Containerfile.${{ matrix.variant }}
       platforms: linux/arm64
-      push: ${{ github.event_name != 'pull_request' }}
+      push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       image-artifact-name: container-image-${{ matrix.variant }}
     secrets:
       DOCKER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
