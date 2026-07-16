@@ -47,6 +47,10 @@ image_exists() {
   container image list --quiet 2> /dev/null | grep -Fx "${IMAGE}" > /dev/null
 }
 
+volume_exists() {
+  container volume list --quiet 2> /dev/null | grep -Fx "${HOME_VOLUME}" > /dev/null
+}
+
 using_default_containerfile_and_image() {
   [[ "${CONTAINERFILE}" == "Containerfile.${VARIANT}" && "${IMAGE}" == "ghcr.io/dceoy/acld-${VARIANT}:latest" ]]
 }
@@ -217,7 +221,11 @@ clean() {
   if image_exists; then
     container image delete "${IMAGE}" > /dev/null
   fi
-  printf 'Image clean complete.\n'
+  if volume_exists; then
+    printf "Removing volume '%s'...\n" "${HOME_VOLUME}"
+    container volume delete "${HOME_VOLUME}" > /dev/null
+  fi
+  printf 'Clean complete.\n'
 }
 
 shell() {
@@ -248,7 +256,7 @@ Targets:
   shell        Open a shell in the selected container, or a temporary one
   pull         Pull the selected image from the registry and tag it locally
   build        Build the selected container image locally
-  clean        Stop and remove the selected container and its images
+  clean        Stop and remove the selected container, image, and home volume
   variants     List available image variants
   help         Show this help message
 
