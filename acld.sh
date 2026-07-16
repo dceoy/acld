@@ -9,7 +9,7 @@ fi
 readonly VARIANT="${VARIANT:-ai}"
 readonly CONTAINERFILE="${CONTAINERFILE:-Containerfile.${VARIANT}}"
 readonly IMAGE="${IMAGE:-acld:${VARIANT}}"
-readonly REMOTE_IMAGE="${REMOTE_IMAGE:-ghcr.io/dceoy/acld/${VARIANT}:latest}"
+readonly REMOTE_IMAGE="${REMOTE_IMAGE:-ghcr.io/dceoy/acld-${VARIANT}:latest}"
 readonly NAME="${NAME:-acld-${VARIANT}}"
 readonly LEGACY_NAME='acld'
 readonly HOST_IP="${HOST_IP:-127.0.0.1}"
@@ -317,7 +317,7 @@ Common variables:
   VARIANT=ai|base
   CONTAINERFILE=Containerfile.\${VARIANT}
   IMAGE=acld:\${VARIANT}
-  REMOTE_IMAGE=ghcr.io/dceoy/acld/\${VARIANT}:latest
+  REMOTE_IMAGE=ghcr.io/dceoy/acld-\${VARIANT}:latest
   NAME=acld-\${VARIANT}
   HOST_IP, PORT, CPUS, MEMORY, VNC_GEOMETRY, VNC_DEPTH, VNC_PASSWORD
   HOST_MOUNTS_FILE=.mounts

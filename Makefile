@@ -5,7 +5,7 @@
 VARIANT ?= ai
 CONTAINERFILE ?= Containerfile.$(VARIANT)
 IMAGE ?= acld:$(VARIANT)
-REMOTE_IMAGE ?= ghcr.io/dceoy/acld/$(VARIANT):latest
+REMOTE_IMAGE ?= ghcr.io/dceoy/acld-$(VARIANT):latest
 NAME ?= acld-$(VARIANT)
 HOST_IP ?= 127.0.0.1
 PORT ?= 6080
