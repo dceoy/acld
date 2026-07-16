@@ -2,12 +2,33 @@
 
 set -euo pipefail
 
-readonly WORKSPACE_DIR='/workspace'
-readonly VNC_CONFIG_DIR="${HOME}/.config/tigervnc"
+: "${HOME:?HOME must be set}"
+: "${USER_NAME:?USER_NAME must be set}"
+: "${WORKSPACE_DIR:?WORKSPACE_DIR must be set}"
+readonly HOME USER_NAME WORKSPACE_DIR
 
-if [[ -d /opt/home-skel && -w "${HOME}" && -z "$(ls -A "${HOME}" 2> /dev/null)" ]]; then
-  cp -a /opt/home-skel/. "${HOME}/"
+initialize_mounts() {
+  local user_gid user_uid
+
+  user_uid="$(id -u "${USER_NAME}")"
+  user_gid="$(id -g "${USER_NAME}")"
+  if [[ "$(stat -c '%u:%g' "${HOME}")" != "${user_uid}:${user_gid}" ]]; then
+    chown "${USER_NAME}:${USER_NAME}" "${HOME}"
+  fi
+  if [[ -d /opt/home-skel && -z "$(ls -A "${HOME}" 2> /dev/null)" ]]; then
+    cp -a /opt/home-skel/. "${HOME}/"
+    chown -R "${USER_NAME}:${USER_NAME}" "${HOME}"
+  fi
+}
+
+if (( "$(id -u)" == 0 )); then
+  initialize_mounts
+  exec setpriv --reuid="${USER_NAME}" --regid="${USER_NAME}" --init-groups \
+    env USER="${USER_NAME}" LOGNAME="${USER_NAME}" \
+    "${BASH_SOURCE[0]}" "$@"
 fi
+
+readonly VNC_CONFIG_DIR="${HOME}/.config/tigervnc"
 
 if [[ -d "${WORKSPACE_DIR}" ]] && [[ ! -w "${WORKSPACE_DIR}" ]]; then
   printf 'WARNING: %s is not writable; the workspace may be read-only.\n' \

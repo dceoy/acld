@@ -19,7 +19,8 @@ readonly VNC_DEPTH="${VNC_DEPTH:-24}"
 if [[ -n "${VNC_PASSWORD:-}" ]]; then
   readonly VNC_PASSWORD VNC_PASSWORD_GENERATED=0
 else
-  readonly VNC_PASSWORD="${NAME}-${RANDOM}" VNC_PASSWORD_GENERATED=1
+  printf -v VNC_PASSWORD '%04x%04x' "${RANDOM}" "${RANDOM}"
+  readonly VNC_PASSWORD VNC_PASSWORD_GENERATED=1
 fi
 readonly CONTAINER_HOME='/home/agent'
 readonly HOME_VOLUME="${HOME_VOLUME:-${NAME}-home}"
@@ -165,6 +166,7 @@ up() {
   printf "Starting container '%s'...\n" "${NAME}"
   container_args=(
     --detach --rm
+    --uid 0 --gid 0
     --name "${NAME}"
     --cpus "${CPUS}"
     --memory "${MEMORY}"
