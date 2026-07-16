@@ -5,6 +5,7 @@ set -euo pipefail
 readonly WORKSPACE_DIR='/workspace'
 
 export HOME='/root'
+readonly VNC_CONFIG_DIR="${HOME}/.config/tigervnc"
 
 # Seed the persistent home once from the image's default skeleton home.
 # A later start finds it already populated and leaves it untouched.
@@ -25,16 +26,17 @@ fi
 
 : "${VNC_PASSWORD:?VNC_PASSWORD must be set}"
 
-printf '%s\n' "${VNC_PASSWORD}" | vncpasswd -f > "${HOME}/.vnc/passwd"
-chmod 600 "${HOME}/.vnc/passwd"
+mkdir -p "${VNC_CONFIG_DIR}"
+printf '%s\n' "${VNC_PASSWORD}" | vncpasswd -f > "${VNC_CONFIG_DIR}/passwd"
+chmod 600 "${VNC_CONFIG_DIR}/passwd"
 
-cat > "${HOME}/.vnc/xstartup" << EOF
+cat > "${VNC_CONFIG_DIR}/xstartup" << EOF
 #!/usr/bin/env bash
 unset SESSION_MANAGER
 unset DBUS_SESSION_BUS_ADDRESS
 exec startxfce4
 EOF
-chmod +x "${HOME}/.vnc/xstartup"
+chmod +x "${VNC_CONFIG_DIR}/xstartup"
 
 vncserver "${DISPLAY}" \
   -geometry "${VNC_GEOMETRY}" \
