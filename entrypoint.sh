@@ -2,15 +2,14 @@
 
 set -euo pipefail
 
-readonly ROOT_HOME='/root'
 readonly WORKSPACE_DIR='/workspace'
 
-export HOME="${ROOT_HOME}"
+export HOME='/root'
 
 # Seed the persistent home once from the image's default skeleton home. A
 # later start finds it already populated and leaves it untouched.
-if [[ -d /opt/home-skel && -z "$(ls -A "${ROOT_HOME}" 2> /dev/null)" ]]; then
-  cp -a /opt/home-skel/. "${ROOT_HOME}/"
+if [[ -d /opt/home-skel && -z "$(ls -A "${HOME}" 2> /dev/null)" ]]; then
+  cp -a /opt/home-skel/. "${HOME}/"
 fi
 
 # A bind-mounted workspace can surface as read-only inside the guest.

@@ -19,7 +19,6 @@ readonly MEMORY="${MEMORY:-4G}"
 readonly VNC_GEOMETRY="${VNC_GEOMETRY:-1440x900}"
 readonly VNC_DEPTH="${VNC_DEPTH:-24}"
 readonly VNC_PASSWORD="${VNC_PASSWORD:-apple}"
-readonly CONTAINER_HOME='/root'
 readonly HOME_VOLUME="${HOME_VOLUME:-${NAME}-home}"
 readonly CONTAINER_WORKSPACE='/workspace'
 readonly WORKSPACE_DIR="${WORKSPACE_DIR:-$(pwd)}"
@@ -190,7 +189,7 @@ up() {
     --env "VNC_GEOMETRY=${VNC_GEOMETRY}"
     --env "VNC_DEPTH=${VNC_DEPTH}"
     --env "VNC_PASSWORD=${VNC_PASSWORD}"
-    --volume "${HOME_VOLUME}:${CONTAINER_HOME}"
+    --volume "${HOME_VOLUME}:/root"
     --volume "${WORKSPACE_DIR}:${CONTAINER_WORKSPACE}"
   )
   container run "${container_args[@]}" "${IMAGE}" > /dev/null
@@ -250,7 +249,7 @@ shell() {
   # The image entrypoint initializes the persistent home volume and runs
   # the given command as root.
   exec container run --rm --interactive --tty \
-    --volume "${HOME_VOLUME}:${CONTAINER_HOME}" \
+    --volume "${HOME_VOLUME}:/root" \
     --volume "${WORKSPACE_DIR}:${CONTAINER_WORKSPACE}" \
     "${IMAGE}" /bin/bash
 }
