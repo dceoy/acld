@@ -244,7 +244,7 @@ shell() {
   validate_workspace_dir
   container system status > /dev/null 2>&1 || container system start
   if container_running; then
-    exec container exec --interactive --tty "${NAME}" /usr/local/bin/entrypoint /bin/bash
+    exec container exec --interactive --tty "${NAME}" /usr/local/bin/entrypoint su root
   fi
   if ! image_exists; then
     printf "ERROR: image '%s' not found. Run 'make pull' or 'make build' first.\n" "${IMAGE}" >&2
@@ -253,7 +253,7 @@ shell() {
   exec container run --rm --interactive --tty \
     --volume "${HOME_VOLUME}:/root" \
     --volume "${WORKSPACE_DIR}:${CONTAINER_WORKSPACE}" \
-    "${IMAGE}" /bin/bash --login
+    "${IMAGE}" su root
 }
 
 help() {
