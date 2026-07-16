@@ -10,6 +10,10 @@ readonly HOME USER_NAME WORKSPACE_DIR
 if (( "$(id -u)" == 0 )); then
   user_uid="$(id -u "${USER_NAME}")"
   user_gid="$(id -g "${USER_NAME}")"
+  mkdir -p /run/dbus
+  if [[ ! -S /run/dbus/system_bus_socket ]]; then
+    dbus-daemon --system --fork
+  fi
   if [[ "$(stat -c '%u:%g' "${HOME}")" != "${user_uid}:${user_gid}" ]]; then
     chown "${USER_NAME}:${USER_NAME}" "${HOME}"
   fi
@@ -38,19 +42,12 @@ mkdir -p "${VNC_CONFIG_DIR}"
 printf '%s\n' "${VNC_PASSWORD}" | vncpasswd -f > "${VNC_CONFIG_DIR}/passwd"
 chmod 600 "${VNC_CONFIG_DIR}/passwd"
 
-if [[ -x /usr/bin/claude-desktop ]]; then
-  startup_command='/usr/bin/claude-desktop > /tmp/claude-desktop.log 2>&1 &'
-else
-  startup_command=''
-fi
-
-cat > "${VNC_CONFIG_DIR}/xstartup" << EOF
+cat > "${VNC_CONFIG_DIR}/xstartup" << 'EOF'
 #!/usr/bin/env bash
 
 unset SESSION_MANAGER
 unset DBUS_SESSION_BUS_ADDRESS
-${startup_command}
-exec startxfce4
+exec dbus-run-session -- startxfce4
 EOF
 chmod +x "${VNC_CONFIG_DIR}/xstartup"
 
