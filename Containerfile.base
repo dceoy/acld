@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM ubuntu:26.04
 
 ARG DEBIAN_FRONTEND='noninteractive'
@@ -22,18 +23,23 @@ ENV \
 
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 
-# hadolint ignore=DL3008
+# Cache mounts keep downloaded packages and index lists out of the image
+# layers while letting subsequent builds reuse them.
+# hadolint ignore=DL3008,DL3009
 RUN \
-      printf 'Acquire::Retries "10";\nAcquire::http::Timeout "60";\nAcquire::https::Timeout "60";\n' \
+      --mount=type=cache,target=/var/cache/apt,sharing=locked \
+      --mount=type=cache,target=/var/lib/apt,sharing=locked \
+      rm -f /etc/apt/apt.conf.d/docker-clean \
+      && printf 'Binary::apt::APT::Keep-Downloaded-Packages "true";\n' \
+        > /etc/apt/apt.conf.d/99acld-keep-cache \
+      && printf 'Acquire::Retries "10";\nAcquire::http::Timeout "60";\nAcquire::https::Timeout "60";\n' \
         > /etc/apt/apt.conf.d/99acld-network-retries \
       && apt-get -yqq update \
       && apt-get -yqq upgrade \
       && apt-get -yqq install --no-install-recommends --no-install-suggests \
         ca-certificates dbus-x11 novnc procps tigervnc-standalone-server \
         tigervnc-tools tini websockify xfce4 xfce4-terminal \
-      && apt-get -yqq autoremove --purge \
-      && apt-get -yqq clean \
-      && rm -rf /var/lib/apt/lists/*
+      && apt-get -yqq autoremove --purge
 
 RUN \
       groupadd --gid "${USER_GID}" "${USER_NAME}" \
@@ -44,10 +50,10 @@ RUN \
 
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint
 
-# The image defaults to the non-root agent user. acld.sh starts the
-# container with --uid 0 so the entrypoint can initialize the persistent
-# home volume and the workspace mount before dropping privileges.
-USER ${USER_NAME}
+# The entrypoint starts as root to initialize the persistent home volume
+# and the workspace mount, then drops privileges to the agent user.
+# hadolint ignore=DL3002
+USER root   # trivy:ignore:AVD-DS-0002
 WORKDIR /workspace
 
 EXPOSE ${NOVNC_PORT}

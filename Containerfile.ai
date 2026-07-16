@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM ubuntu:26.04
 
 ARG DEBIAN_FRONTEND='noninteractive'
@@ -22,16 +23,30 @@ ENV \
 
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 
-# hadolint ignore=DL3008
+# Cache mounts keep downloaded packages and index lists out of the image
+# layers while letting subsequent builds reuse them. The base desktop stack
+# is installed in its own layer so that changes to the AI tooling below do
+# not invalidate it.
+# hadolint ignore=DL3008,DL3009
 RUN \
-      claude_desktop_key_fingerprint='31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE' \
+      --mount=type=cache,target=/var/cache/apt,sharing=locked \
+      --mount=type=cache,target=/var/lib/apt,sharing=locked \
+      rm -f /etc/apt/apt.conf.d/docker-clean \
+      && printf 'Binary::apt::APT::Keep-Downloaded-Packages "true";\n' \
+        > /etc/apt/apt.conf.d/99acld-keep-cache \
       && printf 'Acquire::Retries "10";\nAcquire::http::Timeout "60";\nAcquire::https::Timeout "60";\n' \
         > /etc/apt/apt.conf.d/99acld-network-retries \
       && apt-get -yqq update \
       && apt-get -yqq upgrade \
       && apt-get -yqq install --no-install-recommends --no-install-suggests \
         ca-certificates curl dbus-x11 gnupg novnc procps tigervnc-standalone-server \
-        tigervnc-tools tini websockify xfce4 xfce4-terminal \
+        tigervnc-tools tini websockify xfce4 xfce4-terminal
+
+# hadolint ignore=DL3008,DL3009
+RUN \
+      --mount=type=cache,target=/var/cache/apt,sharing=locked \
+      --mount=type=cache,target=/var/lib/apt,sharing=locked \
+      claude_desktop_key_fingerprint='31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE' \
       && curl -fsSL -o /usr/share/keyrings/claude-desktop-archive-keyring.asc \
         https://downloads.claude.ai/claude-desktop/key.asc \
       && gpg --batch --show-keys --with-colons /usr/share/keyrings/claude-desktop-archive-keyring.asc \
@@ -47,9 +62,7 @@ RUN \
       && apt-get -yqq update \
       && apt-get -yqq install --no-install-recommends --no-install-suggests \
         claude-desktop gh git jq nodejs python3 ripgrep rsync tree unzip vim wget zsh \
-      && apt-get -yqq autoremove --purge \
-      && apt-get -yqq clean \
-      && rm -rf /var/lib/apt/lists/*
+      && apt-get -yqq autoremove --purge
 
 ENV UV_TOOL_BIN_DIR=/usr/local/bin
 ENV UV_TOOL_DIR=/usr/local/share/uv/tools
@@ -81,10 +94,10 @@ RUN \
 
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint
 
-# The image defaults to the non-root agent user. acld.sh starts the
-# container with --uid 0 so the entrypoint can initialize the persistent
-# home volume and the workspace mount before dropping privileges.
-USER ${USER_NAME}
+# The entrypoint starts as root to initialize the persistent home volume
+# and the workspace mount, then drops privileges to the agent user.
+# hadolint ignore=DL3002
+USER root   # trivy:ignore:AVD-DS-0002
 WORKDIR /workspace
 
 EXPOSE ${NOVNC_PORT}
