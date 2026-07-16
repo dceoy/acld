@@ -1,4 +1,5 @@
-FROM ubuntu:26.04
+# syntax=docker/dockerfile:1
+FROM public.ecr.aws/docker/library/ubuntu:26.04
 
 ARG DEBIAN_FRONTEND='noninteractive'
 ARG USER_NAME='agent'
@@ -22,27 +23,38 @@ ENV \
 
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 
-# hadolint ignore=DL3008
+# hadolint ignore=DL3008,DL3009
 RUN \
-      printf 'Acquire::Retries "10";\nAcquire::http::Timeout "60";\nAcquire::https::Timeout "60";\n' \
+      --mount=type=cache,target=/var/cache/apt,sharing=locked \
+      --mount=type=cache,target=/var/lib/apt,sharing=locked \
+      rm -f /etc/apt/apt.conf.d/docker-clean \
+      && printf 'Binary::apt::APT::Keep-Downloaded-Packages "true";\n' \
+        > /etc/apt/apt.conf.d/99acld-keep-cache \
+      && printf 'Acquire::Retries "10";\nAcquire::http::Timeout "60";\nAcquire::https::Timeout "60";\n' \
         > /etc/apt/apt.conf.d/99acld-network-retries \
       && apt-get -yqq update \
       && apt-get -yqq upgrade \
       && apt-get -yqq install --no-install-recommends --no-install-suggests \
-        ca-certificates dbus-x11 novnc procps tigervnc-standalone-server \
+        ca-certificates dbus dbus-x11 novnc procps tigervnc-standalone-server \
         tigervnc-tools tini websockify xfce4 xfce4-terminal \
-      && apt-get -yqq autoremove --purge \
-      && apt-get -yqq clean \
-      && rm -rf /var/lib/apt/lists/*
+      && apt-get -yqq autoremove --purge
 
 RUN \
       groupadd --gid "${USER_GID}" "${USER_NAME}" \
-      && useradd --uid "${USER_UID}" --gid "${USER_GID}" --shell /bin/bash --create-home "${USER_NAME}"
+      && useradd --uid "${USER_UID}" --gid "${USER_GID}" --shell /bin/bash --create-home "${USER_NAME}" \
+      && mkdir -p /opt/home-skel /workspace \
+      && cp -a "/home/${USER_NAME}/." /opt/home-skel/ \
+      && chown -R "${USER_NAME}:${USER_NAME}" /opt/home-skel /workspace
+
+ENV \
+  HOME="/home/${USER_NAME}" \
+  USER_NAME="${USER_NAME}" \
+  WORKSPACE_DIR='/workspace'
 
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint
 
-USER "${USER_NAME}"
-WORKDIR "/home/${USER_NAME}"
+USER ${USER_NAME}
+WORKDIR /workspace
 
 EXPOSE ${NOVNC_PORT}
 

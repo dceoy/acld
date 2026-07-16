@@ -1,4 +1,5 @@
-FROM ubuntu:26.04
+# syntax=docker/dockerfile:1
+FROM public.ecr.aws/docker/library/ubuntu:26.04
 
 ARG DEBIAN_FRONTEND='noninteractive'
 ARG USER_NAME='agent'
@@ -22,16 +23,26 @@ ENV \
 
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 
-# hadolint ignore=DL3008
+# hadolint ignore=DL3008,DL3009
 RUN \
-      claude_desktop_key_fingerprint='31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE' \
+      --mount=type=cache,target=/var/cache/apt,sharing=locked \
+      --mount=type=cache,target=/var/lib/apt,sharing=locked \
+      rm -f /etc/apt/apt.conf.d/docker-clean \
+      && printf 'Binary::apt::APT::Keep-Downloaded-Packages "true";\n' \
+        > /etc/apt/apt.conf.d/99acld-keep-cache \
       && printf 'Acquire::Retries "10";\nAcquire::http::Timeout "60";\nAcquire::https::Timeout "60";\n' \
         > /etc/apt/apt.conf.d/99acld-network-retries \
       && apt-get -yqq update \
       && apt-get -yqq upgrade \
       && apt-get -yqq install --no-install-recommends --no-install-suggests \
-        ca-certificates curl dbus-x11 gnupg novnc procps tigervnc-standalone-server \
-        tigervnc-tools tini websockify xfce4 xfce4-terminal \
+        ca-certificates curl dbus dbus-x11 gnupg novnc procps tigervnc-standalone-server \
+        tigervnc-tools tini websockify xfce4 xfce4-terminal
+
+# hadolint ignore=DL3008,DL3009
+RUN \
+      --mount=type=cache,target=/var/cache/apt,sharing=locked \
+      --mount=type=cache,target=/var/lib/apt,sharing=locked \
+      claude_desktop_key_fingerprint='31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE' \
       && curl -fsSL -o /usr/share/keyrings/claude-desktop-archive-keyring.asc \
         https://downloads.claude.ai/claude-desktop/key.asc \
       && gpg --batch --show-keys --with-colons /usr/share/keyrings/claude-desktop-archive-keyring.asc \
@@ -47,9 +58,7 @@ RUN \
       && apt-get -yqq update \
       && apt-get -yqq install --no-install-recommends --no-install-suggests \
         claude-desktop gh git jq nodejs python3 ripgrep rsync tree unzip vim wget zsh \
-      && apt-get -yqq autoremove --purge \
-      && apt-get -yqq clean \
-      && rm -rf /var/lib/apt/lists/*
+      && apt-get -yqq autoremove --purge
 
 ENV UV_TOOL_BIN_DIR=/usr/local/bin
 ENV UV_TOOL_DIR=/usr/local/share/uv/tools
@@ -73,13 +82,34 @@ RUN \
       && pnpm config set store-dir /usr/local/share/pnpm/store
 
 RUN \
+      mkdir -p /usr/share/applications \
+      && { \
+        echo '[Desktop Entry]'; \
+        echo 'Type=Application'; \
+        echo 'Name=Claude Desktop'; \
+        echo 'Comment=Claude AI Assistant for Desktop'; \
+        echo 'Exec=/usr/bin/claude-desktop'; \
+        echo 'Icon=application-x-python'; \
+        echo 'Categories=Development;Utility;'; \
+        echo 'Terminal=false'; \
+      } > /usr/share/applications/claude-desktop.desktop
+
+RUN \
       groupadd --gid "${USER_GID}" "${USER_NAME}" \
-      && useradd --uid "${USER_UID}" --gid "${USER_GID}" --shell /bin/bash --create-home "${USER_NAME}"
+      && useradd --uid "${USER_UID}" --gid "${USER_GID}" --shell /bin/bash --create-home "${USER_NAME}" \
+      && mkdir -p /opt/home-skel /workspace \
+      && cp -a "/home/${USER_NAME}/." /opt/home-skel/ \
+      && chown -R "${USER_NAME}:${USER_NAME}" /opt/home-skel /workspace
+
+ENV \
+  HOME="/home/${USER_NAME}" \
+  USER_NAME="${USER_NAME}" \
+  WORKSPACE_DIR='/workspace'
 
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint
 
-USER "${USER_NAME}"
-WORKDIR "/home/${USER_NAME}"
+USER ${USER_NAME}
+WORKDIR /workspace
 
 EXPOSE ${NOVNC_PORT}
 

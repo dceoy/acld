@@ -18,3 +18,4 @@ git ls-files -z -- '.github/workflows/*.yml' | xargs -0 -t actionlint
 
 # IaC
 checkov --framework=all --output=github_failed_only --directory=.
+trivy filesystem --scanners vuln,secret,misconfig --skip-dirs .git .

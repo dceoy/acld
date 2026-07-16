@@ -2,35 +2,54 @@
 
 set -euo pipefail
 
-: "${VNC_PASSWORD:?VNC_PASSWORD must be set}"
+: "${HOME:?HOME must be set}"
+: "${USER_NAME:?USER_NAME must be set}"
+: "${WORKSPACE_DIR:?WORKSPACE_DIR must be set}"
+readonly HOME USER_NAME WORKSPACE_DIR
 
-# Create requested bind-mount target directories on a best-effort basis.
-# Paths outside what this non-root user can create must already exist.
-if [[ -n "${MOUNT_TARGETS:-}" ]]; then
-  IFS=':' read -r -a mount_targets <<< "${MOUNT_TARGETS}"
-  for mount_target in "${mount_targets[@]}"; do
-    [[ -z "${mount_target}" ]] && continue
-    if ! mkdir -p "${mount_target}" 2> /dev/null; then
-      printf 'WARNING: could not create mount target %s -- ensure it already exists and is writable\n' "${mount_target}" >&2
-    fi
-  done
+if (( "$(id -u)" == 0 )); then
+  user_uid="$(id -u "${USER_NAME}")"
+  user_gid="$(id -g "${USER_NAME}")"
+  mkdir -p /run/dbus
+  if [[ ! -S /run/dbus/system_bus_socket ]]; then
+    dbus-daemon --system --fork
+  fi
+  if [[ "$(stat -c '%u:%g' "${HOME}")" != "${user_uid}:${user_gid}" ]]; then
+    chown "${USER_NAME}:${USER_NAME}" "${HOME}"
+  fi
+  if [[ -d /opt/home-skel && -z "$(ls -A "${HOME}" 2> /dev/null)" ]]; then
+    cp -a /opt/home-skel/. "${HOME}/"
+    chown -R "${USER_NAME}:${USER_NAME}" "${HOME}"
+  fi
+  exec setpriv --reuid="${USER_NAME}" --regid="${USER_NAME}" --init-groups \
+    env USER="${USER_NAME}" LOGNAME="${USER_NAME}" "${BASH_SOURCE[0]}" "${@}"
 fi
 
-# TigerVNC migrates the legacy ~/.vnc directory to ~/.config/tigervnc on
-# first start.  Its migration cannot create ~/.config itself.
-install -d -m 700 "${HOME}/.config"
-install -d -m 700 "${HOME}/.vnc"
+readonly VNC_CONFIG_DIR="${HOME}/.config/tigervnc"
 
-printf '%s\n' "${VNC_PASSWORD}" | vncpasswd -f > "${HOME}/.vnc/passwd"
-chmod 600 "${HOME}/.vnc/passwd"
+if [[ -d "${WORKSPACE_DIR}" ]] && [[ ! -w "${WORKSPACE_DIR}" ]]; then
+  printf 'WARNING: %s is not writable; the workspace may be read-only.\n' \
+    "${WORKSPACE_DIR}" >&2
+fi
 
-cat > "${HOME}/.vnc/xstartup" << EOF
+if (( ${#} > 0 )); then
+  exec "${@}"
+fi
+
+: "${VNC_PASSWORD:?VNC_PASSWORD must be set}"
+
+mkdir -p "${VNC_CONFIG_DIR}"
+printf '%s\n' "${VNC_PASSWORD}" | vncpasswd -f > "${VNC_CONFIG_DIR}/passwd"
+chmod 600 "${VNC_CONFIG_DIR}/passwd"
+
+cat > "${VNC_CONFIG_DIR}/xstartup" << 'EOF'
 #!/usr/bin/env bash
+
 unset SESSION_MANAGER
 unset DBUS_SESSION_BUS_ADDRESS
-exec startxfce4
+exec dbus-run-session -- startxfce4
 EOF
-chmod +x "${HOME}/.vnc/xstartup"
+chmod +x "${VNC_CONFIG_DIR}/xstartup"
 
 vncserver "${DISPLAY}" \
   -geometry "${VNC_GEOMETRY}" \
