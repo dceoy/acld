@@ -94,16 +94,7 @@ make up VARIANT=ai
 make up VARIANT=base PORT=6081
 ```
 
-When upgrading from a version that used the container name `acld`, stop that legacy container once before starting the default `acld-ai` container:
-
-```sh
-make down NAME=acld
-make up
-```
-
-The default `make up` detects a running legacy container on the old default noVNC endpoint and prints this migration command instead of attempting to start a conflicting container.
-
-`CONTAINERFILE`, `IMAGE`, `REMOTE_IMAGE`, and `NAME` remain independently overridable for custom images. `make up` only pulls from GitHub Container Registry for the published `ai`/`base` variants with default `CONTAINERFILE`/`IMAGE`; any other variant (including a locally added `Containerfile.foo`), or an overridden `CONTAINERFILE`/`IMAGE`, is built locally instead, since no matching image is published for it. The Make workflow always passes the selected Containerfile explicitly; direct `container build` commands must also specify `--file`.
+`CONTAINERFILE`, `IMAGE`, and `NAME` remain independently overridable for custom images. `make up` only pulls from GitHub Container Registry for the published `ai`/`base` variants with default `CONTAINERFILE`/`IMAGE`; any other variant (including a locally added `Containerfile.foo`), or an overridden `CONTAINERFILE`/`IMAGE`, is built locally instead, since no matching image is published for it. The Make workflow always passes the selected Containerfile explicitly; direct `container build` commands must also specify `--file`.
 
 ## Make targets
 
@@ -133,8 +124,7 @@ Everything in the container runs as `root`; the entrypoint seeds the persistent 
 | --------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `VARIANT`       | `ai`                                   | Image variant; selects the derived Containerfile, image tag, and container name                                              |
 | `CONTAINERFILE` | `Containerfile.${VARIANT}`             | Container build definition; normally derived from `VARIANT`                                                                  |
-| `IMAGE`         | `acld:${VARIANT}`                      | Local OCI image name; normally derived from `VARIANT`                                                                        |
-| `REMOTE_IMAGE`  | `ghcr.io/dceoy/acld-${VARIANT}:latest` | Registry image reference used by `make pull`; normally derived from `VARIANT`                                                |
+| `IMAGE`         | `ghcr.io/dceoy/acld-${VARIANT}:latest` | OCI image reference, used both locally and for `make pull`; normally derived from `VARIANT`                                  |
 | `NAME`          | `acld-${VARIANT}`                      | Container name; normally derived from `VARIANT`                                                                              |
 | `HOST_IP`       | `127.0.0.1`                            | Host bind address                                                                                                            |
 | `PORT`          | `6080`                                 | noVNC host port                                                                                                              |

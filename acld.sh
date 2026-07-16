@@ -8,10 +8,8 @@ fi
 
 readonly VARIANT="${VARIANT:-ai}"
 readonly CONTAINERFILE="${CONTAINERFILE:-Containerfile.${VARIANT}}"
-readonly IMAGE="${IMAGE:-acld:${VARIANT}}"
-readonly REMOTE_IMAGE="${REMOTE_IMAGE:-ghcr.io/dceoy/acld-${VARIANT}:latest}"
+readonly IMAGE="${IMAGE:-ghcr.io/dceoy/acld-${VARIANT}:latest}"
 readonly NAME="${NAME:-acld-${VARIANT}}"
-readonly LEGACY_NAME='acld'
 readonly HOST_IP="${HOST_IP:-127.0.0.1}"
 readonly PORT="${PORT:-6080}"
 readonly CPUS="${CPUS:-4}"
@@ -43,21 +41,12 @@ container_exists() {
   container list --all --quiet 2> /dev/null | grep -Fx "${NAME}" > /dev/null
 }
 
-legacy_container_running() {
-  [[ "${VARIANT}" == ai && "${NAME}" == acld-ai && "${HOST_IP}" == 127.0.0.1 && "${PORT}" == 6080 ]] || return 1
-  container list --quiet 2> /dev/null | grep -Fx "${LEGACY_NAME}" > /dev/null
-}
-
 image_exists() {
   container image list --quiet 2> /dev/null | grep -Fx "${IMAGE}" > /dev/null
 }
 
-remote_image_exists() {
-  container image list --quiet 2> /dev/null | grep -Fx "${REMOTE_IMAGE}" > /dev/null
-}
-
 using_default_containerfile_and_image() {
-  [[ "${CONTAINERFILE}" == "Containerfile.${VARIANT}" && "${IMAGE}" == "acld:${VARIANT}" ]]
+  [[ "${CONTAINERFILE}" == "Containerfile.${VARIANT}" && "${IMAGE}" == "ghcr.io/dceoy/acld-${VARIANT}:latest" ]]
 }
 
 published_variant() {
@@ -146,11 +135,8 @@ build() {
 pull() {
   check
   container system status > /dev/null 2>&1 || container system start
-  printf "Pulling image '%s'...\n" "${REMOTE_IMAGE}"
-  container image pull --platform linux/arm64 "${REMOTE_IMAGE}"
-  if [[ "${REMOTE_IMAGE}" != "${IMAGE}" ]]; then
-    container image tag "${REMOTE_IMAGE}" "${IMAGE}"
-  fi
+  printf "Pulling image '%s'...\n" "${IMAGE}"
+  container image pull --platform linux/arm64 "${IMAGE}"
 }
 
 up() {
@@ -163,11 +149,6 @@ up() {
     printf "Container '%s' is already running.\n" "${NAME}"
     printf 'noVNC:  %s\n' "${NOVNC_URL}"
     return
-  fi
-  if legacy_container_running; then
-    printf "ERROR: legacy container '%s' is still running on the default noVNC endpoint.\n" "${LEGACY_NAME}" >&2
-    printf "Stop it with 'make down NAME=%s', then run 'make up' again.\n" "${LEGACY_NAME}" >&2
-    return 1
   fi
   if ! image_exists; then
     if using_default_containerfile_and_image && published_variant; then
@@ -233,9 +214,6 @@ clean() {
   if image_exists; then
     container image delete "${IMAGE}" > /dev/null
   fi
-  if [[ "${REMOTE_IMAGE}" != "${IMAGE}" ]] && remote_image_exists; then
-    container image delete "${REMOTE_IMAGE}" > /dev/null
-  fi
   printf 'Image clean complete.\n'
 }
 
@@ -274,8 +252,7 @@ Targets:
 Common variables:
   VARIANT=ai|base
   CONTAINERFILE=Containerfile.\${VARIANT}
-  IMAGE=acld:\${VARIANT}
-  REMOTE_IMAGE=ghcr.io/dceoy/acld-\${VARIANT}:latest
+  IMAGE=ghcr.io/dceoy/acld-\${VARIANT}:latest
   NAME=acld-\${VARIANT}
   HOST_IP, PORT, CPUS, MEMORY, VNC_GEOMETRY, VNC_DEPTH, VNC_PASSWORD
   HOME_VOLUME=\${NAME}-home
