@@ -21,6 +21,7 @@ if [[ -n "${VNC_PASSWORD:-}" ]]; then
 else
   readonly VNC_PASSWORD="${NAME}-${RANDOM}" VNC_PASSWORD_GENERATED=1
 fi
+readonly CONTAINER_HOME='/home/agent'
 readonly HOME_VOLUME="${HOME_VOLUME:-${NAME}-home}"
 readonly CONTAINER_WORKSPACE='/workspace'
 readonly WORKSPACE_DIR="${WORKSPACE_DIR:-$(pwd)}"
@@ -162,8 +163,11 @@ up() {
     container delete "${NAME}" > /dev/null
   fi
   printf "Starting container '%s'...\n" "${NAME}"
+  # The entrypoint starts as root to initialize the mounts before dropping
+  # privileges to the agent user.
   container_args=(
     --detach --rm
+    --uid 0 --gid 0
     --name "${NAME}"
     --cpus "${CPUS}"
     --memory "${MEMORY}"
@@ -171,7 +175,7 @@ up() {
     --env "VNC_GEOMETRY=${VNC_GEOMETRY}"
     --env "VNC_DEPTH=${VNC_DEPTH}"
     --env "VNC_PASSWORD=${VNC_PASSWORD}"
-    --volume "${HOME_VOLUME}:/root"
+    --volume "${HOME_VOLUME}:${CONTAINER_HOME}"
     --volume "${WORKSPACE_DIR}:${CONTAINER_WORKSPACE}"
   )
   container run "${container_args[@]}" "${IMAGE}" > /dev/null
@@ -222,16 +226,19 @@ shell() {
   validate_workspace_dir
   container system status > /dev/null 2>&1 || container system start
   if container_running; then
-    exec container exec --interactive --tty "${NAME}" /usr/local/bin/entrypoint su root
+    exec container exec --interactive --tty "${NAME}" /usr/local/bin/entrypoint /bin/bash
   fi
   if ! image_exists; then
     printf "ERROR: image '%s' not found. Run 'make pull' or 'make build' first.\n" "${IMAGE}" >&2
     return 1
   fi
+  # The image entrypoint initializes the persistent home volume as root,
+  # drops privileges to the agent user, and runs the given command.
   exec container run --rm --interactive --tty \
-    --volume "${HOME_VOLUME}:/root" \
+    --uid 0 --gid 0 \
+    --volume "${HOME_VOLUME}:${CONTAINER_HOME}" \
     --volume "${WORKSPACE_DIR}:${CONTAINER_WORKSPACE}" \
-    "${IMAGE}" su root
+    "${IMAGE}" /bin/bash
 }
 
 help() {

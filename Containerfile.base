@@ -2,6 +2,9 @@
 FROM public.ecr.aws/docker/library/ubuntu:26.04
 
 ARG DEBIAN_FRONTEND='noninteractive'
+ARG USER_NAME='agent'
+ARG USER_UID='1001'
+ARG USER_GID='1001'
 ARG VNC_GEOMETRY='1440x900'
 ARG VNC_DEPTH='24'
 ARG NOVNC_PORT='6080'
@@ -37,13 +40,15 @@ RUN \
       && apt-get -yqq autoremove --purge
 
 RUN \
-      mkdir -p /opt/home-skel /workspace \
-      && cp -a /root/. /opt/home-skel/
+      groupadd --gid "${USER_GID}" "${USER_NAME}" \
+      && useradd --uid "${USER_UID}" --gid "${USER_GID}" --shell /bin/bash --create-home "${USER_NAME}" \
+      && mkdir -p /opt/home-skel /workspace \
+      && cp -a "/home/${USER_NAME}/." /opt/home-skel/ \
+      && chown -R "${USER_NAME}:${USER_NAME}" /opt/home-skel /workspace
 
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint
 
-# hadolint ignore=DL3002
-USER root
+USER ${USER_NAME}
 WORKDIR /workspace
 
 EXPOSE ${NOVNC_PORT}
