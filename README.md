@@ -49,13 +49,17 @@ List available variants:
 make variants
 ```
 
-| Variant | Containerfile | Image | Container | Purpose |
-| --- | --- | --- | --- | --- |
-| `base` | `Containerfile.base` | `acld:base` | `acld-base` | Minimal XFCE desktop |
-| `claude` | `Containerfile.claude` | `acld:claude` | `acld-claude` | Claude Desktop and development tools |
-| `oracle` | `Containerfile.oracle` | `acld:oracle` | `acld-oracle` | Oracle CLI with headful Chromium for ChatGPT Web |
+| Variant  | Containerfile          | Image                              | Container     | Purpose                                          |
+| -------- | ---------------------- | ---------------------------------- | ------------- | ------------------------------------------------ |
+| `base`   | `Containerfile.base`   | `ghcr.io/dceoy/acld-base:latest`   | `acld-base`   | Minimal XFCE desktop                             |
+| `claude` | `Containerfile.claude` | `ghcr.io/dceoy/acld-claude:latest` | `acld-claude` | Claude Desktop and development tools             |
+| `oracle` | `Containerfile.oracle` | `ghcr.io/dceoy/acld-oracle:latest` | `acld-oracle` | Oracle CLI with headful Chromium for ChatGPT Web |
 
-The former `ai` variant has been renamed to `claude` so the variant name describes the installed application explicitly.
+The former `ai` variant has been renamed to `claude` so the variant name describes the installed application explicitly. This also changes the default container name from `acld-ai` to `acld-claude` and the default home volume from `acld-ai-home` to `acld-claude-home`. To keep using the existing Claude Desktop settings and login state, reuse the old volume explicitly:
+
+```sh
+make up VARIANT=claude HOME_VOLUME=acld-ai-home
+```
 
 ### Minimal desktop
 
@@ -130,35 +134,35 @@ make up VARIANT=oracle PORT=6082 MEMORY=8G
 make <target> [VARIABLE=value ...]
 ```
 
-| Target | Description |
-| --- | --- |
-| `up` | Start the selected desktop; safe to rerun |
-| `down` | Stop the selected container |
-| `status` | Show container status and the noVNC URL |
-| `shell` | Open an interactive shell |
-| `pull` | Pull the selected image |
-| `build` | Build the selected image locally |
-| `clean` | Remove the selected container, image, and home volume |
-| `variants` | List available `Containerfile.*` variants |
-| `help` | Show command usage |
+| Target     | Description                                           |
+| ---------- | ----------------------------------------------------- |
+| `up`       | Start the selected desktop; safe to rerun             |
+| `down`     | Stop the selected container                           |
+| `status`   | Show container status and the noVNC URL               |
+| `shell`    | Open an interactive shell                             |
+| `pull`     | Pull the selected image                               |
+| `build`    | Build the selected image locally                      |
+| `clean`    | Remove the selected container, image, and home volume |
+| `variants` | List available `Containerfile.*` variants             |
+| `help`     | Show command usage                                    |
 
 ## Configuration
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `VARIANT` | `base` | Selects the Containerfile, image, and container name |
-| `CONTAINERFILE` | `Containerfile.${VARIANT}` | Container build definition |
-| `IMAGE` | `ghcr.io/dceoy/acld-${VARIANT}:latest` | OCI image reference |
-| `NAME` | `acld-${VARIANT}` | Container name |
-| `HOST_IP` | `127.0.0.1` | noVNC bind address |
-| `PORT` | `6080` | noVNC host port |
-| `CPUS` | `4` | CPU allocation |
-| `MEMORY` | `4G` | Memory allocation |
-| `VNC_GEOMETRY` | `1440x900` | Desktop resolution |
-| `VNC_DEPTH` | `24` | VNC color depth |
-| `VNC_PASSWORD` | generated when empty | VNC password |
-| `WORKSPACE_DIR` | current directory | Host directory mounted at `/workspace` |
-| `HOME_VOLUME` | `acld-${VARIANT}-home` | Persistent volume mounted at `/home/agent` |
+| Variable        | Default                                | Description                                          |
+| --------------- | -------------------------------------- | ---------------------------------------------------- |
+| `VARIANT`       | `base`                                 | Selects the Containerfile, image, and container name |
+| `CONTAINERFILE` | `Containerfile.${VARIANT}`             | Container build definition                           |
+| `IMAGE`         | `ghcr.io/dceoy/acld-${VARIANT}:latest` | OCI image reference                                  |
+| `NAME`          | `acld-${VARIANT}`                      | Container name                                       |
+| `HOST_IP`       | `127.0.0.1`                            | noVNC bind address                                   |
+| `PORT`          | `6080`                                 | noVNC host port                                      |
+| `CPUS`          | `4`                                    | CPU allocation                                       |
+| `MEMORY`        | `4G`                                   | Memory allocation                                    |
+| `VNC_GEOMETRY`  | `1440x900`                             | Desktop resolution                                   |
+| `VNC_DEPTH`     | `24`                                   | VNC color depth                                      |
+| `VNC_PASSWORD`  | generated when empty                   | VNC password                                         |
+| `WORKSPACE_DIR` | current directory                      | Host directory mounted at `/workspace`               |
+| `HOME_VOLUME`   | `acld-${VARIANT}-home`                 | Persistent volume mounted at `/home/agent`           |
 
 Example:
 
