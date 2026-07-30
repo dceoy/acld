@@ -7,7 +7,7 @@ set -euo pipefail
 : "${WORKSPACE_DIR:?WORKSPACE_DIR must be set}"
 readonly HOME USER_NAME WORKSPACE_DIR
 
-if (( "$(id -u)" == 0 )); then
+if (("$(id -u)" == 0)); then
   user_uid="$(id -u "${USER_NAME}")"
   user_gid="$(id -g "${USER_NAME}")"
   mkdir -p /run/dbus
@@ -32,7 +32,7 @@ if [[ -d "${WORKSPACE_DIR}" ]] && [[ ! -w "${WORKSPACE_DIR}" ]]; then
     "${WORKSPACE_DIR}" >&2
 fi
 
-if (( ${#} > 0 )); then
+if ((${#} > 0)); then
   exec "${@}"
 fi
 

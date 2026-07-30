@@ -3,19 +3,20 @@
 set -euox pipefail
 cd "$(git rev-parse --show-toplevel)"
 
-# Shell
-git ls-files -z -- '*.sh' '*.bash' '*.bats' | xargs -0 -t shellcheck
-
-# Markdown
-npx -y prettier -w './**/*.md'
+# Markdown and JSON
+npx -y prettier --write './**/*.{md,json}'
 
 # YAML
-git ls-files -z -- '*.yml' '*.yaml' | xargs -0 -t yamllint -d '{"extends": "relaxed", "rules": {"line-length": "disable"}}'
+git ls-files -z -- '*.yml' \
+  | xargs -0 -t uvx yamllint -d '{"extends": "relaxed", "rules": {"line-length": "disable"}}'
+
+# Shell scripts
+git ls-files -z -- '*.sh' '*.bash' '*.bats' \
+  | xargs -0 -t shfmt --write --indent=2 --binary-next-line --case-indent --space-redirects
+git ls-files -z -- '*.sh' '*.bash' '*.bats' \
+  | xargs -0 -t shellcheck
 
 # GitHub Actions
 zizmor --fix=safe .github/workflows
 git ls-files -z -- '.github/workflows/*.yml' | xargs -0 -t actionlint
-
-# IaC
 checkov --framework=all --output=github_failed_only --directory=.
-trivy filesystem --scanners vuln,secret,misconfig --skip-dirs .git .

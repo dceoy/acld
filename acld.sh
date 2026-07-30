@@ -64,9 +64,9 @@ check() {
 
   arch="$(uname -m 2> /dev/null || printf unknown)"
   case "${arch}" in
-    arm64|aarch64 )
+    arm64 | aarch64)
       ;;
-    * )
+    *)
       printf 'ERROR: Apple silicon (arm64) is required; detected %s.\n' "${arch}" >&2
       return 1
       ;;
@@ -82,11 +82,11 @@ check() {
     version="$(sw_vers -productVersion 2> /dev/null || printf unknown)"
     major="${version%%.*}"
     case "${major}" in
-      ''|*[!0-9]* )
+      '' | *[!0-9]*)
         printf 'WARNING: could not determine macOS version; continuing.\n' >&2
         ;;
-      * )
-        if (( major < MIN_MACOS_MAJOR )); then
+      *)
+        if ((major < MIN_MACOS_MAJOR)); then
           printf 'ERROR: macOS %s or later is required; detected %s.\n' "${MIN_MACOS_MAJOR}" "${version}" >&2
           return 1
         fi
@@ -111,7 +111,7 @@ variants() {
     printf '  %s\n' "${file#Containerfile.}"
     found=1
   done
-  if (( ! found )); then
+  if ((!found)); then
     printf '  (none)\n'
     return 1
   fi
@@ -183,7 +183,7 @@ up() {
   )
   container run "${container_args[@]}" "${IMAGE}" > /dev/null
   printf "Container '%s' started.\n" "${NAME}"
-  if (( VNC_PASSWORD_GENERATED )); then
+  if ((VNC_PASSWORD_GENERATED)); then
     printf 'VNC password (randomly generated): %s\n' "${VNC_PASSWORD}"
   fi
   printf 'noVNC:  %s\n' "${NOVNC_URL}"
@@ -276,15 +276,15 @@ EOF
 main() {
   local command="${1:-help}"
 
-  if (( ${#} > 1 )); then
+  if ((${#} > 1)); then
     printf 'ERROR: expected one command, got %s.\n' "${#}" >&2
     return 2
   else
     case "${command}" in
-      help|check|variants|pull|build|up|down|status|clean|shell )
+      help | check | variants | pull | build | up | down | status | clean | shell)
         "${command}"
         ;;
-      * )
+      *)
         printf 'ERROR: unknown command: %s\n' "${command}" >&2
         return 2
         ;;
