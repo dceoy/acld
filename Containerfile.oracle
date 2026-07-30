@@ -40,7 +40,7 @@ RUN \
         websockify wget xfce4 xfce4-terminal xz-utils zsh
 
 # Oracle requires Node.js 24 or later.
-# hadolint ignore=DL3008,DL3009
+# hadolint ignore=DL3008,DL3009,DL3016
 RUN \
       curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
       && apt-get -yqq install --no-install-recommends --no-install-suggests nodejs \
