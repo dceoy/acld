@@ -18,6 +18,9 @@ on:
       - .dockerignore
       - .github/workflows/build-container-images.yml
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -30,11 +33,12 @@ jobs:
           - base
           - claude
           - oracle
+          - dev
     permissions:
       contents: write
       packages: write
       id-token: write
-    uses: dceoy/gh-actions-for-devops/.github/workflows/docker-build-and-push.yml@main  # zizmor: ignore[unpinned-uses]
+    uses: dceoy/gha-for-devops/.github/workflows/docker-build-and-push.yml@main  # zizmor: ignore[unpinned-uses]
     with:
       registry: ghcr.io
       image-name: ${{ github.repository_owner }}/acld-${{ matrix.variant }}

@@ -1,0 +1,305 @@
+# syntax=docker/dockerfile:1
+FROM public.ecr.aws/docker/library/debian:13-slim
+
+ARG DEBIAN_FRONTEND='noninteractive'
+ARG USER_NAME='agent'
+ARG USER_UID='1001'
+ARG USER_GID='1001'
+ARG VNC_GEOMETRY='1440x900'
+ARG VNC_DEPTH='24'
+ARG NOVNC_PORT='6080'
+ARG ZSH_THEME='nicoulaj'
+ARG CLAUDE_CODE_VERSION='latest'
+ARG CODEX_CLI_VERSION='latest'
+ARG OPENCODE_VERSION='latest'
+ARG GIT_USER_NAME='claude'
+ARG GIT_USER_EMAIL='noreply@anthropic.com'
+
+LABEL \
+  org.opencontainers.image.title="acld" \
+  org.opencontainers.image.description="Oracle CLI and AI development toolchain with Docker on XFCE for Apple Container" \
+  org.opencontainers.image.source="https://github.com/dceoy/acld" \
+  org.opencontainers.image.licenses="MIT"
+
+ENV \
+  DISPLAY=':1' \
+  VNC_GEOMETRY="${VNC_GEOMETRY}" \
+  VNC_DEPTH="${VNC_DEPTH}" \
+  NOVNC_PORT="${NOVNC_PORT}" \
+  UV_TOOL_BIN_DIR='/usr/local/bin' \
+  UV_TOOL_DIR='/usr/local/share/uv/tools' \
+  PNPM_HOME='/usr/local/share/pnpm' \
+  PNPM_GLOBAL_DIR='/usr/local/share/pnpm/global' \
+  PLAYWRIGHT_BROWSERS_PATH='/usr/local/share/ms-playwright'
+ENV PATH="${PNPM_HOME}/bin:${PATH}"
+
+SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
+
+# hadolint ignore=DL3008,DL3009,SC2086
+RUN \
+      --mount=type=cache,target=/var/cache/apt,sharing=locked \
+      --mount=type=cache,target=/var/lib/apt,sharing=locked \
+      rm -f /etc/apt/apt.conf.d/docker-clean \
+      && printf 'Binary::apt::APT::Keep-Downloaded-Packages "true";\n' \
+        > /etc/apt/apt.conf.d/99acld-keep-cache \
+      && printf 'Acquire::Retries "10";\nAcquire::http::Timeout "60";\nAcquire::https::Timeout "60";\n' \
+        > /etc/apt/apt.conf.d/99acld-network-retries \
+      && apt-get -yqq update \
+      && apt-get -yqq upgrade \
+      && apt-get -yqq install --no-install-recommends --no-install-suggests \
+        apt-file apt-transport-https apt-utils build-essential ca-certificates chromium curl \
+        dbus dbus-x11 fonts-noto-cjk git gnupg jq lsb-release novnc procps python3 ripgrep \
+        rsync shfmt software-properties-common tigervnc-standalone-server tigervnc-tools tini \
+        tree unzip vim websockify wget xfce4 xfce4-terminal xz-utils zsh \
+      && install -d -m 0755 /etc/apt/keyrings \
+      && curl -fsSL -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+        https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+      && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        > /etc/apt/sources.list.d/github-cli.list \
+      && curl -fsSL -o /etc/apt/keyrings/docker.asc https://download.docker.com/linux/debian/gpg \
+      && chmod a+r /etc/apt/keyrings/docker.asc \
+      && { \
+        echo 'Types: deb'; \
+        echo 'URIs: https://download.docker.com/linux/debian'; \
+        echo "Suites: $(. /etc/os-release && echo \"${VERSION_CODENAME}\")"; \
+        echo 'Components: stable'; \
+        echo "Architectures: $(dpkg --print-architecture)"; \
+        echo 'Signed-By: /etc/apt/keyrings/docker.asc'; \
+      } > /etc/apt/sources.list.d/docker.sources \
+      && apt-get -yqq update \
+      && apt-get -yqq install --no-install-recommends --no-install-suggests \
+        containerd.io docker-buildx-plugin docker-ce docker-ce-cli docker-compose-plugin gh
+
+# Oracle requires Node.js 24 or later.
+# hadolint ignore=DL3008,DL3009,DL3016
+RUN \
+      curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+      && apt-get -yqq install --no-install-recommends --no-install-suggests nodejs \
+      && npm install --global @steipete/oracle \
+      && npm cache clean --force \
+      && node --version \
+      && oracle --version \
+      && docker --version \
+      && docker buildx version \
+      && docker compose version \
+      && apt-get -yqq autoremove --purge
+
+ENV \
+  CHROME_PATH='/usr/bin/chromium' \
+  ORACLE_ENGINE='browser'
+
+RUN \
+      curl -fsSL https://astral.sh/uv/install.sh \
+        | env UV_UNMANAGED_INSTALL=/usr/local/bin sh
+
+RUN \
+      --mount=type=cache,target=/root/.cache/uv \
+      uv tool install checkov \
+      && uv tool install zizmor \
+      && uv tool install yamllint
+
+RUN \
+      mkdir -p "${PNPM_HOME}" \
+      && curl -fsSL https://get.pnpm.io/install.sh \
+        | ENV=/tmp/pnpmrc SHELL=/bin/bash bash - \
+      && rm -f /tmp/pnpmrc
+
+RUN \
+      pnpm config set global-bin-dir "${PNPM_HOME}/bin" \
+      && pnpm config set global-dir "${PNPM_GLOBAL_DIR}" \
+      && pnpm config set store-dir /usr/local/share/pnpm/store \
+      && pnpm add --global @playwright/cli bats
+
+RUN \
+      mkdir -p "${PLAYWRIGHT_BROWSERS_PATH}" \
+      && playwright-cli install-browser chromium --with-deps \
+      && chmod -R a+rX "${PLAYWRIGHT_BROWSERS_PATH}"
+
+RUN \
+      --mount=type=cache,target=/root/.cache \
+      curl -fsSL -o /tmp/awscliv2.zip \
+        "https://awscli.amazonaws.com/awscli-exe-linux-$([ "$(uname -m)" = 'x86_64' ] && echo 'x86_64' || echo 'aarch64').zip" \
+      && unzip /tmp/awscliv2.zip -d /tmp \
+      && /tmp/aws/install \
+      && rm -rf /tmp/awscliv2.zip /tmp/aws
+
+# hadolint ignore=SC3014
+RUN \
+      curl -fsSL https://checkpoint-api.hashicorp.com/v1/check/terraform \
+        | jq -r '.current_version' \
+        | xargs -t -I{} curl -fsSL -o /tmp/terraform.zip \
+          "https://releases.hashicorp.com/terraform/{}/terraform_{}_linux_$([[ "$(uname -m)" == 'x86_64' ]] && echo 'amd64' || echo 'arm64').zip" \
+      && unzip /tmp/terraform.zip -d /usr/local/bin \
+      && chmod +x /usr/local/bin/terraform \
+      && rm -f /tmp/terraform.zip
+
+# hadolint ignore=SC3014
+RUN \
+      curl -fsSL https://api.github.com/repos/gruntwork-io/terragrunt/releases/latest \
+        | jq -r '.tag_name' \
+        | xargs -t -I{} curl -fsSL -o /usr/local/bin/terragrunt \
+          "https://github.com/gruntwork-io/terragrunt/releases/download/{}/terragrunt_linux_$([[ "$(uname -m)" == 'x86_64' ]] && echo 'amd64' || echo 'arm64')" \
+      && chmod +x /usr/local/bin/terragrunt
+
+# hadolint ignore=SC3014
+RUN \
+      curl -fsSL https://api.github.com/repos/aquasecurity/trivy/releases/latest \
+        | jq -r '.tag_name' \
+        | tr -d v \
+        | xargs -t -I{} curl -fsSL -o /tmp/trivy.tar.gz \
+          "https://github.com/aquasecurity/trivy/releases/download/v{}/trivy_{}_Linux-$([[ "$(uname -m)" == 'x86_64' ]] && echo '64bit' || echo 'ARM64').tar.gz" \
+      && tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy \
+      && chmod +x /usr/local/bin/trivy \
+      && rm -f /tmp/trivy.tar.gz
+
+RUN \
+      curl -fsSL -o /usr/local/bin/print-github-tags \
+        https://raw.githubusercontent.com/dceoy/print-github-tags/master/print-github-tags \
+      && chmod +x /usr/local/bin/print-github-tags \
+      && curl -fsSL -o /usr/local/bin/install.ohmyz.sh https://install.ohmyz.sh \
+      && chmod +x /usr/local/bin/install.ohmyz.sh \
+      && curl -fsSL -o /usr/local/bin/claude.ai.install.sh https://claude.ai/install.sh \
+      && chmod +x /usr/local/bin/claude.ai.install.sh \
+      && curl -fsSL -o /usr/local/bin/codex.install.sh https://chatgpt.com/codex/install.sh \
+      && chmod +x /usr/local/bin/codex.install.sh \
+      && curl -fsSL -o /usr/local/bin/antigravity.install.sh https://antigravity.google/cli/install.sh \
+      && chmod +x /usr/local/bin/antigravity.install.sh \
+      && curl -fsSL -o /usr/local/bin/cursor.install.sh https://cursor.com/install \
+      && chmod +x /usr/local/bin/cursor.install.sh \
+      && curl -fsSL -o /usr/local/bin/opencode.install.sh https://opencode.ai/install \
+      && chmod +x /usr/local/bin/opencode.install.sh \
+      && curl -fsSL -o /usr/local/bin/copilot.install.sh https://gh.io/copilot-install \
+      && chmod +x /usr/local/bin/copilot.install.sh
+
+RUN \
+      if ! getent group docker > /dev/null; then groupadd docker; fi \
+      && groupadd --gid "${USER_GID}" "${USER_NAME}" \
+      && useradd --uid "${USER_UID}" --gid "${USER_GID}" --shell /usr/bin/zsh --create-home "${USER_NAME}"
+
+RUN \
+      usermod -aG docker "${USER_NAME}" \
+      && mkdir -p /opt/home-skel /workspace \
+      && chown -R "${USER_NAME}:${USER_NAME}" /opt/home-skel /workspace
+
+ENV \
+  HOME="/home/${USER_NAME}" \
+  USER_NAME="${USER_NAME}" \
+  WORKSPACE_DIR='/workspace'
+ENV PATH="${HOME}/.local/bin:${HOME}/.opencode/bin:${PATH}"
+
+# hadolint ignore=DL3066
+USER ${USER_NAME}
+WORKDIR ${HOME}
+
+RUN \
+      --mount=type=cache,target=/home/${USER_NAME}/.cache,uid="${USER_UID}",gid="${USER_GID}" \
+      /usr/local/bin/claude.ai.install.sh "${CLAUDE_CODE_VERSION}"
+
+# hadolint ignore=DL3059
+RUN \
+      --mount=type=cache,target=/home/${USER_NAME}/.cache,uid="${USER_UID}",gid="${USER_GID}" \
+      CODEX_NON_INTERACTIVE=1 /usr/local/bin/codex.install.sh --release "${CODEX_CLI_VERSION}"
+
+# hadolint ignore=DL3059
+RUN \
+      --mount=type=cache,target=/home/${USER_NAME}/.cache,uid="${USER_UID}",gid="${USER_GID}" \
+      /usr/local/bin/antigravity.install.sh
+
+# hadolint ignore=DL3059
+RUN \
+      --mount=type=cache,target=/home/${USER_NAME}/.cache,uid="${USER_UID}",gid="${USER_GID}" \
+      /usr/local/bin/cursor.install.sh
+
+# hadolint ignore=DL3059,DL4006,SC2015
+RUN \
+      --mount=type=cache,target=/home/${USER_NAME}/.cache,uid="${USER_UID}",gid="${USER_GID}" \
+      [[ "${OPENCODE_VERSION}" != "latest" ]] \
+      && /usr/local/bin/opencode.install.sh --version "${OPENCODE_VERSION}" \
+      || curl -fsSL https://api.github.com/repos/anomalyco/opencode/releases/latest \
+        | jq -r '.tag_name' \
+        | xargs -t /usr/local/bin/opencode.install.sh --version
+
+# hadolint ignore=DL3059
+RUN \
+      --mount=type=cache,target=/home/${USER_NAME}/.cache,uid="${USER_UID}",gid="${USER_GID}" \
+      /usr/local/bin/copilot.install.sh
+
+# hadolint ignore=DL3059
+RUN \
+      mkdir -p "${HOME}/.playwright" \
+      && gh skill install microsoft/playwright-cli playwright-cli \
+      && jq -n '{browser: {browserName: "chromium", launchOptions: {chromiumSandbox: false}}}' \
+        > "${HOME}/.playwright/cli.config.json"
+
+# hadolint ignore=SC2016
+RUN \
+      /usr/local/bin/install.ohmyz.sh --unattended \
+      && sed -ie "s/^ZSH_THEME=.*/ZSH_THEME='${ZSH_THEME}'/g" ~/.zshrc \
+      && rm -f ~/.zshrce \
+      && { \
+        echo 'alias l="ls"'; \
+        echo 'alias g="git"'; \
+        echo 'alias v="vim"'; \
+      } >> ~/.zprofile
+
+RUN \
+      echo '.DS_Store' > "${HOME}/.gitignore" \
+      && git config --global color.ui auto \
+      && git config --global core.excludesfile "${HOME}/.gitignore" \
+      && git config --global core.pager '' \
+      && git config --global core.quotepath false \
+      && git config --global core.precomposeunicode false \
+      && git config --global gui.encoding utf-8 \
+      && git config --global fetch.prune true \
+      && git config --global push.default matching \
+      && git config --global user.name "${GIT_USER_NAME}" \
+      && git config --global user.email "${GIT_USER_EMAIL}"
+
+RUN \
+      mkdir -p "${HOME}/.oracle" \
+      && cat > "${HOME}/.oracle/config.json" <<'EOF_ORACLE'
+{
+  engine: "browser",
+  browser: {
+    chromePath: "/usr/bin/chromium",
+    manualLogin: true,
+    modelStrategy: "current",
+    timeoutMs: 1200000,
+    inputTimeoutMs: 300000,
+    autoReattachDelayMs: 5000,
+    autoReattachIntervalMs: 3000,
+    autoReattachTimeoutMs: 60000,
+    headless: false,
+  },
+}
+EOF_ORACLE
+
+RUN \
+      claude plugin marketplace add --scope=user anthropics/claude-plugins-official \
+      && claude plugin install --scope=user code-review@claude-plugins-official \
+      && claude plugin install --scope=user code-simplifier@claude-plugins-official \
+      && claude plugin install --scope=user commit-commands@claude-plugins-official \
+      && claude plugin install --scope=user pr-review-toolkit@claude-plugins-official \
+      && claude plugin install --scope=user security-guidance@claude-plugins-official \
+      && claude plugin marketplace add --scope=user anthropics/knowledge-work-plugins \
+      && claude plugin marketplace add --scope=user openai/codex-plugin-cc \
+      && claude plugin install --scope=user codex@openai-codex
+
+RUN rsync -a "${HOME}/" /opt/home-skel/
+
+# hadolint ignore=DL3066
+USER root
+COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint
+
+# hadolint ignore=DL3066
+USER ${USER_NAME}
+WORKDIR /workspace
+
+EXPOSE ${NOVNC_PORT}
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD ["bash", "-c", "< /dev/tcp/127.0.0.1/${NOVNC_PORT}"]
+
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint"]
