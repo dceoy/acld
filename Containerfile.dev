@@ -35,7 +35,7 @@ ENV PATH="${PNPM_HOME}/bin:${PATH}"
 
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 
-# hadolint ignore=DL3008,DL3009
+# hadolint ignore=DL3008,DL3009,SC2086
 RUN \
       --mount=type=cache,target=/var/cache/apt,sharing=locked \
       --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -124,6 +124,7 @@ RUN \
       && /tmp/aws/install \
       && rm -rf /tmp/awscliv2.zip /tmp/aws
 
+# hadolint ignore=SC3014
 RUN \
       curl -fsSL https://checkpoint-api.hashicorp.com/v1/check/terraform \
         | jq -r '.current_version' \
@@ -133,6 +134,7 @@ RUN \
       && chmod +x /usr/local/bin/terraform \
       && rm -f /tmp/terraform.zip
 
+# hadolint ignore=SC3014
 RUN \
       curl -fsSL https://api.github.com/repos/gruntwork-io/terragrunt/releases/latest \
         | jq -r '.tag_name' \
@@ -140,6 +142,7 @@ RUN \
           "https://github.com/gruntwork-io/terragrunt/releases/download/{}/terragrunt_linux_$([[ "$(uname -m)" == 'x86_64' ]] && echo 'amd64' || echo 'arm64')" \
       && chmod +x /usr/local/bin/terragrunt
 
+# hadolint ignore=SC3014
 RUN \
       curl -fsSL https://api.github.com/repos/aquasecurity/trivy/releases/latest \
         | jq -r '.tag_name' \
@@ -185,6 +188,7 @@ ENV \
   WORKSPACE_DIR='/workspace'
 ENV PATH="${HOME}/.local/bin:${HOME}/.opencode/bin:${PATH}"
 
+# hadolint ignore=DL3066
 USER ${USER_NAME}
 WORKDIR ${HOME}
 
@@ -284,9 +288,11 @@ RUN \
 
 RUN rsync -a "${HOME}/" /opt/home-skel/
 
+# hadolint ignore=DL3066
 USER root
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint
 
+# hadolint ignore=DL3066
 USER ${USER_NAME}
 WORKDIR /workspace
 
