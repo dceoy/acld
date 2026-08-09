@@ -70,7 +70,7 @@ if [[ "${ACLD_ORACLE_SERVE:-0}" == 1 ]]; then
   oracle_service_signal_received=''
 
   # Invoked indirectly by the TERM and INT traps below.
-  # shellcheck disable=SC2329
+  # shellcheck disable=SC2317,SC2329
   oracle_service_signal() {
     oracle_service_signal_received="${1}"
     if [[ "${1}" == INT ]]; then
