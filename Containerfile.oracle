@@ -50,8 +50,11 @@ RUN \
       && oracle --version \
       && apt-get -yqq autoremove --purge
 
-ENV CHROME_PATH='/usr/bin/chromium'
-ENV ORACLE_ENGINE='browser'
+ENV \
+  ACLD_ORACLE_SERVE='1' \
+  CHROME_PATH='/usr/bin/chromium' \
+  ORACLE_ENGINE='browser' \
+  ORACLE_SERVE_PORT='9473'
 
 RUN \
       groupadd --gid "${USER_GID}" "${USER_NAME}" \
@@ -88,10 +91,10 @@ COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint
 USER ${USER_NAME}
 WORKDIR /workspace
 
-EXPOSE ${NOVNC_PORT}
+EXPOSE ${NOVNC_PORT} ${ORACLE_SERVE_PORT}
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD ["bash", "-c", "< /dev/tcp/127.0.0.1/${NOVNC_PORT}"]
+  CMD ["bash", "-c", "< /dev/tcp/127.0.0.1/${NOVNC_PORT} && < /dev/tcp/127.0.0.1/${ORACLE_SERVE_PORT}"]
 
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint"]
