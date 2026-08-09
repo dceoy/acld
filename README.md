@@ -49,11 +49,11 @@ List available variants:
 make variants
 ```
 
-| Variant  | Containerfile          | Image                              | Container     | Purpose                                          |
-| -------- | ---------------------- | ---------------------------------- | ------------- | ------------------------------------------------ |
-| `base`   | `Containerfile.base`   | `ghcr.io/dceoy/acld-base:latest`   | `acld-base`   | Minimal XFCE desktop                             |
-| `claude` | `Containerfile.claude` | `ghcr.io/dceoy/acld-claude:latest` | `acld-claude` | Claude Desktop and development tools             |
-| `oracle` | `Containerfile.oracle` | `ghcr.io/dceoy/acld-oracle:latest` | `acld-oracle` | Oracle remote service with headful Chromium      |
+| Variant  | Containerfile          | Image                              | Container     | Purpose                                     |
+| -------- | ---------------------- | ---------------------------------- | ------------- | ------------------------------------------- |
+| `base`   | `Containerfile.base`   | `ghcr.io/dceoy/acld-base:latest`   | `acld-base`   | Minimal XFCE desktop                        |
+| `claude` | `Containerfile.claude` | `ghcr.io/dceoy/acld-claude:latest` | `acld-claude` | Claude Desktop and development tools        |
+| `oracle` | `Containerfile.oracle` | `ghcr.io/dceoy/acld-oracle:latest` | `acld-oracle` | Oracle remote service with headful Chromium |
 
 The former `ai` variant has been renamed to `claude` so the variant name describes the installed application explicitly. This also changes the default container name from `acld-ai` to `acld-claude` and the default home volume from `acld-ai-home` to `acld-claude-home`. To keep using the existing Claude Desktop settings and login state, reuse the old volume explicitly:
 
