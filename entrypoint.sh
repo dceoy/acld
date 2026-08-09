@@ -65,7 +65,7 @@ readonly -a NOVNC_ARGS=(
 if [[ "${ACLD_ORACLE_SERVE:-0}" == 1 ]]; then
   : "${ORACLE_SERVE_PORT:?ORACLE_SERVE_PORT must be set}"
   websockify "${NOVNC_ARGS[@]}" &
-  exec oracle serve --manual-login --port "${ORACLE_SERVE_PORT}"
+  exec oracle serve --host 0.0.0.0 --manual-login --port "${ORACLE_SERVE_PORT}"
 fi
 
 exec websockify "${NOVNC_ARGS[@]}"
