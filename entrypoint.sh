@@ -56,7 +56,16 @@ vncserver "${DISPLAY}" \
   -depth "${VNC_DEPTH}" \
   -localhost no
 
-exec websockify \
-  --web=/usr/share/novnc \
-  "0.0.0.0:${NOVNC_PORT}" \
+readonly -a NOVNC_ARGS=(
+  --web=/usr/share/novnc
+  "0.0.0.0:${NOVNC_PORT}"
   localhost:5901
+)
+
+if [[ "${ACLD_ORACLE_SERVE:-0}" == 1 ]]; then
+  : "${ORACLE_SERVE_PORT:?ORACLE_SERVE_PORT must be set}"
+  websockify "${NOVNC_ARGS[@]}" &
+  exec oracle serve --manual-login --port "${ORACLE_SERVE_PORT}"
+fi
+
+exec websockify "${NOVNC_ARGS[@]}"
