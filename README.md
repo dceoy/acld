@@ -82,7 +82,7 @@ make shell VARIANT=agents
 herdr
 ```
 
-The agents image is built directly from Debian 13 and includes Herdr, Claude Code, Codex CLI, OpenCode, GitHub CLI, Oracle, agent-browser and its agent skill, uv, pnpm, Playwright, AWS CLI, Terraform, Terragrunt, Trivy, and related development utilities.
+The agents image is built directly from Debian 13 and includes Herdr, Claude Code, Codex CLI, OpenCode, GitHub CLI, Oracle, agent-browser, Docker Engine/CLI with Buildx and Compose, uv, pnpm, Playwright, AWS CLI, Terraform, Terragrunt, Trivy, and related development utilities.
 
 ## Variant overrides
 
