@@ -32,8 +32,7 @@ jobs:
         variant:
           - base
           - claude
-          - oracle
-          - dev
+          - agents
     permissions:
       contents: write
       packages: write

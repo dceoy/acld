@@ -17,7 +17,7 @@ ARG GIT_USER_EMAIL='noreply@anthropic.com'
 
 LABEL \
   org.opencontainers.image.title="acld" \
-  org.opencontainers.image.description="Oracle CLI and AI development toolchain with Docker on XFCE for Apple Container" \
+  org.opencontainers.image.description="AI coding agents with Herdr on XFCE for Apple Container" \
   org.opencontainers.image.source="https://github.com/dceoy/acld" \
   org.opencontainers.image.licenses="MIT"
 
@@ -109,7 +109,7 @@ RUN \
       pnpm config set global-bin-dir "${PNPM_HOME}/bin" \
       && pnpm config set global-dir "${PNPM_GLOBAL_DIR}" \
       && pnpm config set store-dir /usr/local/share/pnpm/store \
-      && pnpm add --global @playwright/cli bats
+      && pnpm add --global @playwright/cli agent-browser bats
 
 RUN \
       mkdir -p "${PLAYWRIGHT_BROWSERS_PATH}" \
@@ -154,6 +154,11 @@ RUN \
       && rm -f /tmp/trivy.tar.gz
 
 RUN \
+      curl -fsSL https://herdr.dev/install.sh \
+        | env HERDR_INSTALL_DIR=/usr/local/bin sh \
+      && herdr --version
+
+RUN \
       curl -fsSL -o /usr/local/bin/print-github-tags \
         https://raw.githubusercontent.com/dceoy/print-github-tags/master/print-github-tags \
       && chmod +x /usr/local/bin/print-github-tags \
@@ -184,6 +189,7 @@ RUN \
 
 ENV \
   HOME="/home/${USER_NAME}" \
+  SHELL='/usr/bin/zsh' \
   USER_NAME="${USER_NAME}" \
   WORKSPACE_DIR='/workspace'
 ENV PATH="${HOME}/.local/bin:${HOME}/.opencode/bin:${PATH}"
@@ -229,6 +235,7 @@ RUN \
 RUN \
       mkdir -p "${HOME}/.playwright" \
       && gh skill install microsoft/playwright-cli playwright-cli \
+      && gh skill install vercel-labs/agent-browser agent-browser \
       && jq -n '{browser: {browserName: "chromium", launchOptions: {chromiumSandbox: false}}}' \
         > "${HOME}/.playwright/cli.config.json"
 
@@ -302,4 +309,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD ["bash", "-c", "< /dev/tcp/127.0.0.1/${NOVNC_PORT}"]
 
 STOPSIGNAL SIGTERM
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["/usr/local/bin/entrypoint", "herdr", "server"]
