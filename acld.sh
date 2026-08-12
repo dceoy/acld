@@ -12,7 +12,6 @@ readonly IMAGE="${IMAGE:-ghcr.io/dceoy/acld-${VARIANT}:latest}"
 readonly NAME="${NAME:-acld-${VARIANT}}"
 readonly HOST_IP="${HOST_IP:-127.0.0.1}"
 readonly PORT="${PORT:-6080}"
-readonly ORACLE_PORT="${ORACLE_PORT:-9473}"
 readonly CPUS="${CPUS:-4}"
 readonly MEMORY="${MEMORY:-4G}"
 readonly VNC_GEOMETRY="${VNC_GEOMETRY:-1440x900}"
@@ -35,7 +34,6 @@ else
 fi
 readonly NOVNC_HOST
 readonly NOVNC_URL="http://${NOVNC_HOST}:${PORT}/vnc.html"
-readonly ORACLE_HOST="${NOVNC_HOST}:${ORACLE_PORT}"
 
 container_running() {
   container list --quiet 2> /dev/null | grep -Fx "${NAME}" > /dev/null
@@ -58,7 +56,7 @@ using_default_containerfile_and_image() {
 }
 
 published_variant() {
-  [[ "${VARIANT}" == base || "${VARIANT}" == claude || "${VARIANT}" == oracle ]]
+  [[ "${VARIANT}" == base || "${VARIANT}" == claude || "${VARIANT}" == agents ]]
 }
 
 check() {
@@ -156,9 +154,6 @@ up() {
   if container_running; then
     printf "Container '%s' is already running.\n" "${NAME}"
     printf 'noVNC:  %s\n' "${NOVNC_URL}"
-    if [[ "${VARIANT}" == oracle ]]; then
-      printf 'Oracle: %s\n' "${ORACLE_HOST}"
-    fi
     return
   fi
   if ! image_exists; then
@@ -186,19 +181,12 @@ up() {
     --volume "${HOME_VOLUME}:${CONTAINER_HOME}"
     --volume "${WORKSPACE_DIR}:${CONTAINER_WORKSPACE}"
   )
-  if [[ "${VARIANT}" == oracle ]]; then
-    container_args+=(--publish "${HOST_IP}:${ORACLE_PORT}:9473")
-  fi
   container run "${container_args[@]}" "${IMAGE}" > /dev/null
   printf "Container '%s' started.\n" "${NAME}"
   if ((VNC_PASSWORD_GENERATED)); then
     printf 'VNC password (randomly generated): %s\n' "${VNC_PASSWORD}"
   fi
   printf 'noVNC:  %s\n' "${NOVNC_URL}"
-  if [[ "${VARIANT}" == oracle ]]; then
-    printf 'Oracle: %s\n' "${ORACLE_HOST}"
-    printf "Token:   container logs %s | grep 'Access token:'\n" "${NAME}"
-  fi
 }
 
 down() {
@@ -214,9 +202,6 @@ status() {
   printf 'Container: %s\n' "${NAME}"
   if container_running; then
     printf 'Status:    running\nnoVNC:     %s\n' "${NOVNC_URL}"
-    if [[ "${VARIANT}" == oracle ]]; then
-      printf 'Oracle:    %s\n' "${ORACLE_HOST}"
-    fi
   elif container_exists; then
     printf 'Status:    stopped (stale container present)\n'
     return 1
@@ -276,11 +261,11 @@ Targets:
   help         Show this help message
 
 Common variables:
-  VARIANT=base|claude|oracle
+  VARIANT=base|claude|agents
   CONTAINERFILE=Containerfile.\${VARIANT}
   IMAGE=ghcr.io/dceoy/acld-\${VARIANT}:latest
   NAME=acld-\${VARIANT}
-  HOST_IP, PORT, ORACLE_PORT, CPUS, MEMORY, VNC_GEOMETRY, VNC_DEPTH, VNC_PASSWORD
+  HOST_IP, PORT, CPUS, MEMORY, VNC_GEOMETRY, VNC_DEPTH, VNC_PASSWORD
   HOME_VOLUME=\${NAME}-home
   WORKSPACE_DIR=<current directory>
 
