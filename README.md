@@ -25,7 +25,7 @@ The repository intentionally keeps the implementation small:
 - `Containerfile.base` provides the minimal desktop
 - `Containerfile.claude` adds Claude Desktop and development tools
 - `Containerfile.oracle` adds Chromium and the Oracle CLI for ChatGPT browser automation
-- `Containerfile.herdr` adds Herdr on top of the full development toolchain
+- `Containerfile.herdr` provides a Debian-based Herdr development environment with AI coding and DevOps tools
 - `entrypoint.sh` starts the desktop services and the Oracle remote service for the `oracle` variant
 - `acld.sh` wraps Apple `container` operations
 - one host workspace bind mount and one persistent home volume
@@ -84,7 +84,7 @@ make shell VARIANT=herdr
 herdr
 ```
 
-The Herdr image layers the official Herdr installer on `acld-dev`, so the existing AI coding agents and development toolchain remain available without duplicating their installation in another Containerfile.
+The Herdr image is built directly from Debian 13 and includes Herdr, Claude Code, Codex CLI, OpenCode, GitHub CLI, Oracle, uv, pnpm, Playwright, AWS CLI, Terraform, Terragrunt, Trivy, and related development utilities.
 
 ### Oracle remote service and ChatGPT Web
 
