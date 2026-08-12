@@ -49,3 +49,21 @@ jobs:
     secrets:
       DOCKER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  build-and-push-herdr:
+    name: Build and push acld herdr image
+    needs: build-and-push
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    uses: dceoy/gha-for-devops/.github/workflows/docker-build-and-push.yml@main  # zizmor: ignore[unpinned-uses]
+    with:
+      registry: ghcr.io
+      image-name: ${{ github.repository_owner }}/acld-herdr
+      file: Containerfile.herdr
+      platforms: linux/arm64
+      push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      image-artifact-name: container-image-herdr
+    secrets:
+      DOCKER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
