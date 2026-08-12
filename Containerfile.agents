@@ -35,7 +35,7 @@ ENV PATH="${PNPM_HOME}/bin:${PATH}"
 
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 
-# hadolint ignore=DL3008,DL3009
+# hadolint ignore=DL3008,DL3009,SC2086
 RUN \
       --mount=type=cache,target=/var/cache/apt,sharing=locked \
       --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -57,8 +57,19 @@ RUN \
       && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
       && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
         > /etc/apt/sources.list.d/github-cli.list \
+      && curl -fsSL -o /etc/apt/keyrings/docker.asc https://download.docker.com/linux/debian/gpg \
+      && chmod a+r /etc/apt/keyrings/docker.asc \
+      && { \
+        echo 'Types: deb'; \
+        echo 'URIs: https://download.docker.com/linux/debian'; \
+        echo "Suites: $(. /etc/os-release && echo \"${VERSION_CODENAME}\")"; \
+        echo 'Components: stable'; \
+        echo "Architectures: $(dpkg --print-architecture)"; \
+        echo 'Signed-By: /etc/apt/keyrings/docker.asc'; \
+      } > /etc/apt/sources.list.d/docker.sources \
       && apt-get -yqq update \
-      && apt-get -yqq install --no-install-recommends --no-install-suggests gh
+      && apt-get -yqq install --no-install-recommends --no-install-suggests \
+        containerd.io docker-buildx-plugin docker-ce docker-ce-cli docker-compose-plugin gh
 
 # Oracle requires Node.js 24 or later.
 # hadolint ignore=DL3008,DL3009,DL3016
@@ -69,6 +80,9 @@ RUN \
       && npm cache clean --force \
       && node --version \
       && oracle --version \
+      && docker --version \
+      && docker buildx version \
+      && docker compose version \
       && apt-get -yqq autoremove --purge
 
 ENV \
@@ -164,8 +178,12 @@ RUN \
       && chmod +x /usr/local/bin/copilot.install.sh
 
 RUN \
-      groupadd --gid "${USER_GID}" "${USER_NAME}" \
-      && useradd --uid "${USER_UID}" --gid "${USER_GID}" --shell /usr/bin/zsh --create-home "${USER_NAME}" \
+      if ! getent group docker > /dev/null; then groupadd docker; fi \
+      && groupadd --gid "${USER_GID}" "${USER_NAME}" \
+      && useradd --uid "${USER_UID}" --gid "${USER_GID}" --shell /usr/bin/zsh --create-home "${USER_NAME}"
+
+RUN \
+      usermod -aG docker "${USER_NAME}" \
       && mkdir -p /opt/home-skel /workspace \
       && chown -R "${USER_NAME}:${USER_NAME}" /opt/home-skel /workspace
 
