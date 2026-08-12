@@ -34,10 +34,6 @@ if [[ -d "${WORKSPACE_DIR}" ]] && [[ ! -w "${WORKSPACE_DIR}" ]]; then
     "${WORKSPACE_DIR}" >&2
 fi
 
-if ((${#} > 0)); then
-  exec "${@}"
-fi
-
 : "${VNC_PASSWORD:?VNC_PASSWORD must be set}"
 
 mkdir -p "${VNC_CONFIG_DIR}"
@@ -57,6 +53,14 @@ vncserver "${DISPLAY}" \
   -geometry "${VNC_GEOMETRY}" \
   -depth "${VNC_DEPTH}" \
   -localhost no
+
+if ((${#} > 0)); then
+  websockify \
+    --web=/usr/share/novnc \
+    "0.0.0.0:${NOVNC_PORT}" \
+    localhost:5901 &
+  exec "${@}"
+fi
 
 exec websockify \
   --web=/usr/share/novnc \
