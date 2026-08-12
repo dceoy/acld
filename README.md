@@ -1,6 +1,6 @@
 # acld
 
-Run a minimal Linux desktop, Claude Desktop, or Oracle CLI browser automation using Apple Container, XFCE, TigerVNC, and noVNC.
+Run a minimal Linux desktop, Claude Desktop, or AI coding-agent environment using Apple Container, XFCE, TigerVNC, and noVNC.
 
 ## Requirements
 
@@ -24,9 +24,8 @@ The repository intentionally keeps the implementation small:
 
 - `Containerfile.base` provides the minimal desktop
 - `Containerfile.claude` adds Claude Desktop and development tools
-- `Containerfile.oracle` adds Chromium and the Oracle CLI for ChatGPT browser automation
-- `Containerfile.herdr` provides a Debian-based Herdr development environment with AI coding and DevOps tools
-- `entrypoint.sh` starts the desktop services and the Oracle remote service for the `oracle` variant
+- `Containerfile.agents` provides a Debian-based Herdr environment with AI coding and DevOps tools
+- `entrypoint.sh` starts the desktop services
 - `acld.sh` wraps Apple `container` operations
 - one host workspace bind mount and one persistent home volume
 
@@ -50,12 +49,11 @@ List available variants:
 make variants
 ```
 
-| Variant  | Containerfile          | Image                              | Container     | Purpose                                     |
-| -------- | ---------------------- | ---------------------------------- | ------------- | ------------------------------------------- |
-| `base`   | `Containerfile.base`   | `ghcr.io/dceoy/acld-base:latest`   | `acld-base`   | Minimal XFCE desktop                        |
-| `claude` | `Containerfile.claude` | `ghcr.io/dceoy/acld-claude:latest` | `acld-claude` | Claude Desktop and development tools        |
-| `oracle` | `Containerfile.oracle` | `ghcr.io/dceoy/acld-oracle:latest` | `acld-oracle` | Oracle remote service with headful Chromium |
-| `herdr`  | `Containerfile.herdr`  | `ghcr.io/dceoy/acld-herdr:latest`  | `acld-herdr`  | Herdr with the full development toolchain   |
+| Variant   | Containerfile           | Image                               | Container      | Purpose                                  |
+| --------- | ----------------------- | ----------------------------------- | -------------- | ---------------------------------------- |
+| `base`    | `Containerfile.base`    | `ghcr.io/dceoy/acld-base:latest`    | `acld-base`    | Minimal XFCE desktop                     |
+| `claude`  | `Containerfile.claude`  | `ghcr.io/dceoy/acld-claude:latest`  | `acld-claude`  | Claude Desktop and development tools     |
+| `agents`  | `Containerfile.agents`  | `ghcr.io/dceoy/acld-agents:latest`  | `acld-agents`  | Herdr with the full development toolchain |
 
 The former `ai` variant has been renamed to `claude` so the variant name describes the installed application explicitly. This also changes the default container name from `acld-ai` to `acld-claude` and the default home volume from `acld-ai-home` to `acld-claude-home`. To keep using the existing Claude Desktop settings and login state, reuse the old volume explicitly:
 
@@ -76,53 +74,25 @@ make up VARIANT=base
 make up VARIANT=claude
 ```
 
-### Herdr development environment
+### AI coding agents with Herdr
 
 ```sh
-make up VARIANT=herdr PORT=6083 MEMORY=8G
-make shell VARIANT=herdr
+make up VARIANT=agents PORT=6082 MEMORY=8G
+make shell VARIANT=agents
 herdr
 ```
 
-The Herdr image is built directly from Debian 13 and includes Herdr, Claude Code, Codex CLI, OpenCode, GitHub CLI, Oracle, uv, pnpm, Playwright, AWS CLI, Terraform, Terragrunt, Trivy, and related development utilities.
-
-### Oracle remote service and ChatGPT Web
-
-```sh
-make up VARIANT=oracle PORT=6082 ORACLE_PORT=9473 MEMORY=8G
-```
-
-The Oracle image starts `oracle serve --manual-login --port 9473` automatically while keeping noVNC available for interactive browser login. Open the printed noVNC URL and complete the ChatGPT login in Chromium when prompted.
-
-Oracle generates an access token when the service starts. Read it from the container log:
-
-```sh
-container logs acld-oracle | grep 'Access token:'
-```
-
-Then point a local Oracle CLI at the service:
-
-```sh
-oracle \
-  --engine browser \
-  --remote-host 127.0.0.1:9473 \
-  --remote-token '<token>' \
-  -p "Reply with OK."
-```
-
-The browser profile, Oracle configuration, and Oracle sessions are stored below `/home/agent`, which is backed by the persistent home volume.
-
-Oracle browser mode is configured to use headful Chromium, manual login, the currently selected ChatGPT model, and automatic response reattachment. Browser automation remains dependent on the ChatGPT Web UI and may occasionally require interactive recovery through noVNC.
+The agents image is built directly from Debian 13 and includes Herdr, Claude Code, Codex CLI, OpenCode, GitHub CLI, Oracle, uv, pnpm, Playwright, AWS CLI, Terraform, Terragrunt, Trivy, and related development utilities.
 
 ## Variant overrides
 
 `VARIANT` selects the Containerfile, image tag, and container name together. The values remain independently overridable:
 
 ```sh
-make build VARIANT=oracle
-make status VARIANT=oracle
-make down VARIANT=oracle
-make clean VARIANT=oracle
+make build VARIANT=agents
+make status VARIANT=agents
+make down VARIANT=agents
+make clean VARIANT=agents
 ```
 
 Custom definitions can be selected explicitly:
@@ -140,8 +110,7 @@ To run variants simultaneously, use different host ports:
 ```sh
 make up VARIANT=base PORT=6080
 make up VARIANT=claude PORT=6081
-make up VARIANT=oracle PORT=6082 ORACLE_PORT=9473 MEMORY=8G
-make up VARIANT=herdr PORT=6083 MEMORY=8G
+make up VARIANT=agents PORT=6082 MEMORY=8G
 ```
 
 ## Make targets
@@ -172,7 +141,6 @@ make <target> [VARIABLE=value ...]
 | `NAME`          | `acld-${VARIANT}`                      | Container name                                       |
 | `HOST_IP`       | `127.0.0.1`                            | Host bind address                                    |
 | `PORT`          | `6080`                                 | noVNC host port                                      |
-| `ORACLE_PORT`   | `9473`                                 | Oracle remote service host port                      |
 | `CPUS`          | `4`                                    | CPU allocation                                       |
 | `MEMORY`        | `4G`                                   | Memory allocation                                    |
 | `VNC_GEOMETRY`  | `1440x900`                             | Desktop resolution                                   |
@@ -184,7 +152,7 @@ make <target> [VARIABLE=value ...]
 Example:
 
 ```sh
-make up VARIANT=oracle PORT=6082 ORACLE_PORT=9473 MEMORY=8G WORKSPACE_DIR="$HOME/projects/demo"
+make up VARIANT=agents MEMORY=8G WORKSPACE_DIR="$HOME/projects/demo"
 ```
 
 ## Persistent storage
@@ -194,13 +162,13 @@ Each desktop uses two mounts:
 - the selected host workspace is mounted read-write at `/workspace`
 - a named Apple Container volume is mounted at `/home/agent`
 
-The home volume preserves browser profiles, desktop settings, Claude Desktop configuration, Oracle settings, Oracle sessions, and development-tool state across `down` and `up` cycles.
+The home volume preserves desktop settings, Claude Desktop configuration, agent configuration, browser state, and development-tool state across `down` and `up` cycles.
 
 Changing `WORKSPACE_DIR` or `HOME_VOLUME` takes effect after recreating the container:
 
 ```sh
-make down VARIANT=oracle
-make up VARIANT=oracle WORKSPACE_DIR="$HOME/projects/demo"
+make down VARIANT=agents
+make up VARIANT=agents WORKSPACE_DIR="$HOME/projects/demo"
 ```
 
 ## Shell access
@@ -208,18 +176,15 @@ make up VARIANT=oracle WORKSPACE_DIR="$HOME/projects/demo"
 ```sh
 make shell
 make shell VARIANT=claude
-make shell VARIANT=oracle
-make shell VARIANT=herdr
+make shell VARIANT=agents
 ```
 
 ## Security
 
-- noVNC and the Oracle remote service bind to `127.0.0.1` on the host by default. Do not expose either service on an untrusted network.
+- noVNC binds to `127.0.0.1` on the host by default. Do not expose it on an untrusted network.
 - Use a strong explicit `VNC_PASSWORD` before any non-loopback exposure.
-- Oracle `serve` generates a random access token on each start. Treat the token as a credential.
 - The workspace mount is read-write; expose only directories the desktop may modify.
-- The persistent home volume contains authenticated browser state and is not encrypted by acld.
-- Oracle browser mode stores the ChatGPT login in its persistent Chromium profile. Treat the Oracle home volume as sensitive credential material.
+- The persistent home volume contains authenticated browser and coding-agent state and is not encrypted by acld.
 - Do not add Chromium `--no-sandbox` unless the container runtime prevents the normal browser sandbox from starting and the security tradeoff is explicitly accepted.
 
 ## Scope
