@@ -25,6 +25,7 @@ The repository intentionally keeps the implementation small:
 - `Containerfile.base` provides the minimal desktop
 - `Containerfile.claude` adds Claude Desktop and development tools
 - `Containerfile.oracle` adds Chromium and the Oracle CLI for ChatGPT browser automation
+- `Containerfile.herdr` adds Herdr on top of the full development toolchain
 - `entrypoint.sh` starts the desktop services and the Oracle remote service for the `oracle` variant
 - `acld.sh` wraps Apple `container` operations
 - one host workspace bind mount and one persistent home volume
@@ -54,6 +55,7 @@ make variants
 | `base`   | `Containerfile.base`   | `ghcr.io/dceoy/acld-base:latest`   | `acld-base`   | Minimal XFCE desktop                        |
 | `claude` | `Containerfile.claude` | `ghcr.io/dceoy/acld-claude:latest` | `acld-claude` | Claude Desktop and development tools        |
 | `oracle` | `Containerfile.oracle` | `ghcr.io/dceoy/acld-oracle:latest` | `acld-oracle` | Oracle remote service with headful Chromium |
+| `herdr`  | `Containerfile.herdr`  | `ghcr.io/dceoy/acld-herdr:latest`  | `acld-herdr`  | Herdr with the full development toolchain   |
 
 The former `ai` variant has been renamed to `claude` so the variant name describes the installed application explicitly. This also changes the default container name from `acld-ai` to `acld-claude` and the default home volume from `acld-ai-home` to `acld-claude-home`. To keep using the existing Claude Desktop settings and login state, reuse the old volume explicitly:
 
@@ -73,6 +75,16 @@ make up VARIANT=base
 ```sh
 make up VARIANT=claude
 ```
+
+### Herdr development environment
+
+```sh
+make up VARIANT=herdr PORT=6083 MEMORY=8G
+make shell VARIANT=herdr
+herdr
+```
+
+The Herdr image layers the official Herdr installer on `acld-dev`, so the existing AI coding agents and development toolchain remain available without duplicating their installation in another Containerfile.
 
 ### Oracle remote service and ChatGPT Web
 
@@ -129,6 +141,7 @@ To run variants simultaneously, use different host ports:
 make up VARIANT=base PORT=6080
 make up VARIANT=claude PORT=6081
 make up VARIANT=oracle PORT=6082 ORACLE_PORT=9473 MEMORY=8G
+make up VARIANT=herdr PORT=6083 MEMORY=8G
 ```
 
 ## Make targets
@@ -181,7 +194,7 @@ Each desktop uses two mounts:
 - the selected host workspace is mounted read-write at `/workspace`
 - a named Apple Container volume is mounted at `/home/agent`
 
-The home volume preserves browser profiles, desktop settings, Claude Desktop configuration, Oracle settings, and Oracle sessions across `down` and `up` cycles.
+The home volume preserves browser profiles, desktop settings, Claude Desktop configuration, Oracle settings, Oracle sessions, and development-tool state across `down` and `up` cycles.
 
 Changing `WORKSPACE_DIR` or `HOME_VOLUME` takes effect after recreating the container:
 
@@ -196,6 +209,7 @@ make up VARIANT=oracle WORKSPACE_DIR="$HOME/projects/demo"
 make shell
 make shell VARIANT=claude
 make shell VARIANT=oracle
+make shell VARIANT=herdr
 ```
 
 ## Security
