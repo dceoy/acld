@@ -38,9 +38,9 @@ Authenticate to `dhi.io` with Docker Hub credentials before a local build on App
 container registry login dhi.io
 ```
 
-For GitHub Actions, configure the repository secret `DHI_TOKEN` with a Docker Hub access token.
-The CI uses `GITHUB_TOKEN` for GHCR publishing and `DHI_TOKEN` only for the DHI source registry.
-The shared build workflow must support `login-dhi` and `DHI_TOKEN` (see `dceoy/gha-for-devops#1143`).
+For GitHub Actions, configure the repository secret `DOCKER_TOKEN` with a Docker Hub access token.
+The CI uses `GITHUB_TOKEN` for GHCR publishing and `DOCKER_TOKEN` only for the DHI source registry.
+The shared build workflow must support `login-dhi` and `DOCKER_TOKEN` (see `dceoy/gha-for-devops#1143`).
 
 ## Quick start
 
