@@ -47,6 +47,5 @@ jobs:
       push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       image-artifact-name: container-image-${{ matrix.variant }}
     secrets:
-      DOCKER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      DHI_TOKEN: ${{ secrets.DHI_TOKEN }}
+      DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
