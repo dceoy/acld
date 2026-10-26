@@ -29,6 +29,19 @@ The repository intentionally keeps the implementation small:
 - `acld.sh` wraps Apple `container` operations
 - one host workspace bind mount and one persistent home volume
 
+## DHI registry authentication
+
+The Containerfiles use the Docker Hardened Images Community Debian 13 `trixie-dev` base.
+Authenticate to `dhi.io` with Docker Hub credentials before a local build on Apple Container:
+
+```sh
+container registry login dhi.io
+```
+
+For GitHub Actions, configure the repository secret `DOCKER_TOKEN` with a Docker Hub access token.
+The CI uses `GITHUB_TOKEN` for GHCR publishing and `DOCKER_TOKEN` only for the DHI source registry.
+The shared build workflow must support `login-dhi` and `DOCKER_TOKEN` (see `dceoy/gha-for-devops#1143`).
+
 ## Quick start
 
 Start the minimal desktop:

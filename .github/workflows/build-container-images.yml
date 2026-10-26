@@ -40,11 +40,12 @@ jobs:
     uses: dceoy/gha-for-devops/.github/workflows/docker-build-and-push.yml@main  # zizmor: ignore[unpinned-uses]
     with:
       registry: ghcr.io
+      login-dhi: true
       image-name: ${{ github.repository_owner }}/acld-${{ matrix.variant }}
       file: Containerfile.${{ matrix.variant }}
       platforms: linux/arm64
       push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       image-artifact-name: container-image-${{ matrix.variant }}
     secrets:
-      DOCKER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
